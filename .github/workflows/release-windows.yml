@@ -43,7 +43,6 @@ jobs:
             --project PickPic `
             --artifact pickpic `
             --build-version ${{ github.ref_name }} `
-            --module-name pickpic.main `
             --no-rich-output `
             --yes
         shell: pwsh

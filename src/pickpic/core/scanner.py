@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from pickpic.config import IMAGE_EXTENSIONS, SCAN_CHUNK
@@ -11,13 +11,19 @@ from pickpic.core.hasher import compute_hashes
 from pickpic.core.blur import compute_blur_score, is_blurry
 
 
-def _discover_images(folders: list[str]) -> list[str]:
+def _discover_images(
+    folders: list[str],
+    progress_cb: Callable[[int, int, str], None] | None = None,
+) -> list[str]:
     paths = []
     for folder in folders:
         for root, _, files in os.walk(folder):
             for f in files:
                 if Path(f).suffix.lower() in IMAGE_EXTENSIONS:
-                    paths.append(os.path.join(root, f))
+                    p = os.path.join(root, f)
+                    paths.append(p)
+                    if progress_cb and len(paths) % 50 == 0:
+                        progress_cb(0, 0, p)
     return paths
 
 
@@ -49,7 +55,7 @@ def scan_new_only(
     min_file_size_bytes: int = 0,
 ) -> list[dict]:
     """Scan folders, skipping already-cached files."""
-    paths = _discover_images(folders)
+    paths = _discover_images(folders, progress_cb)
     to_process = []
     for p in paths:
         try:
@@ -72,8 +78,8 @@ def scan_new_only(
     if not to_process:
         return results
 
-    workers = workers or min(os.cpu_count() or 4, 16)
-    with ProcessPoolExecutor(max_workers=workers) as pool:
+    workers = workers or min(os.cpu_count() or 4, 8)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_process_image, p, blur_threshold): p for p in to_process}
         for fut in as_completed(futures):
             p = futures[fut]

@@ -149,7 +149,8 @@ class PickPicApp:
     # Scan pipeline
     # ──────────────────────────────────────────────
 
-    def _start_scan(self, e=None):
+    async def _start_scan(self, e=None):
+        import asyncio
         if self._scanning:
             return
         if not self.folders:
@@ -160,50 +161,61 @@ class PickPicApp:
         scanner_view = ScannerView()
         self._set_main(scanner_view)
 
-        def run():
-            scan_con = db.get_conn()
-            try:
-                def progress(done, total, path):
+        threading.Thread(target=self._run_scan, args=(scanner_view,), daemon=True).start()
+
+        while self._scanning:
+            scanner_view.render(self.page)
+            await asyncio.sleep(0.2)
+
+        scanner_view.render(self.page)
+
+    def _run_scan(self, scanner_view: ScannerView):
+        scan_con = db.get_conn()
+        try:
+            def progress(done, total, path):
+                if total == 0:
+                    scanner_view.set_stage(0)
+                else:
+                    if scanner_view.current_stage != 1:
+                        scanner_view.set_stage(1)
                     scanner_view.update_progress(done, total, path)
 
-                results = scan_new_only(
-                    self.folders,
-                    is_cached_fn=lambda p, m, s: db.is_cached(scan_con, p, m, s),
-                    progress_cb=progress,
-                    blur_threshold=self._settings.blur_threshold,
-                    min_file_size_bytes=self._settings.min_file_size_kb * 1024,
-                )
+            results = scan_new_only(
+                self.folders,
+                is_cached_fn=lambda p, m, s: db.is_cached(scan_con, p, m, s),
+                progress_cb=progress,
+                blur_threshold=self._settings.blur_threshold,
+                min_file_size_bytes=self._settings.min_file_size_kb * 1024,
+            )
 
-                scan_con.execute("BEGIN")
-                for r in results:
-                    db.upsert_image(scan_con, **r)
-                scan_con.commit()
+            scan_con.execute("BEGIN")
+            for r in results:
+                db.upsert_image(scan_con, **r)
+            scan_con.commit()
 
-                scanner_view.set_phase("Finding duplicate groups...")
-                hashes = db.get_all_hashes(scan_con)
+            scanner_view.set_stage(2)
+            hashes = db.get_all_hashes(scan_con)
 
-                exact_groups, similar_groups = find_hash_groups(
-                    hashes,
-                    hash_distance_similar=self._settings.hash_distance_similar,
-                )
+            exact_groups, similar_groups = find_hash_groups(
+                hashes,
+                hash_distance_similar=self._settings.hash_distance_similar,
+            )
 
-                scan_con.execute("BEGIN")
-                db.clear_groups(scan_con)
-                for g in exact_groups:
-                    db.insert_group(scan_con, "exact", [{"image_id": i, "score": 1.0} for i in g])
-                for g in similar_groups:
-                    db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
-                scan_con.commit()
+            scan_con.execute("BEGIN")
+            db.clear_groups(scan_con)
+            for g in exact_groups:
+                db.insert_group(scan_con, "exact", [{"image_id": i, "score": 1.0} for i in g])
+            for g in similar_groups:
+                db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
+            scan_con.commit()
 
-                self._refresh_sidebar()
-                self._show_results()
-            except Exception as exc:
-                self._snack(f"Scan error: {exc}")
-            finally:
-                scan_con.close()
-                self._scanning = False
-
-        threading.Thread(target=run, daemon=True).start()
+            self._refresh_sidebar()
+            self._show_results()
+        except Exception as exc:
+            self._snack(f"Scan error: {exc}")
+        finally:
+            scan_con.close()
+            self._scanning = False
 
     # ──────────────────────────────────────────────
     # Tab switching & selection

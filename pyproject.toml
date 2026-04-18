@@ -1,0 +1,21 @@
+[project]
+name = "pickpic"
+version = "0.1.0"
+description = "High-performance image duplicate finder and manager"
+requires-python = ">=3.11"
+dependencies = [
+    "flet>=0.24",
+    "imagehash>=4.3",
+    "Pillow>=10.0",
+    "opencv-python-headless>=4.8",
+    "hnswlib>=0.8",
+    "numpy>=1.26",
+    "send2trash>=1.8",
+]
+
+[project.scripts]
+pickpic = "pickpic.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"

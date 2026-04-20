@@ -53,6 +53,25 @@ python -m venv .venv
 pip install -e .
 ```
 
+## Download Aplikasi dari Release
+
+Kalau tidak ingin menjalankan dari source code, aplikasi bisa diunduh dari halaman release GitHub:
+
+- [GitHub Releases PickPic](https://github.com/alisholihindev/pickapic/releases)
+
+Langkah umum:
+
+1. Buka halaman release.
+2. Pilih versi release terbaru.
+3. Download file aplikasi yang tersedia di bagian **Assets**.
+4. Ekstrak file jika release dikemas dalam `.zip`.
+5. Jalankan file aplikasi, misalnya `.exe`, jika asset executable sudah disediakan.
+
+Catatan:
+
+- Jika di release belum ada file aplikasi siap pakai, kamu masih bisa download source code lalu jalankan project dari source seperti langkah di bawah.
+- Untuk Windows, biasanya pengguna akan mencari file `.exe` atau paket `.zip` yang berisi aplikasi.
+
 ## Cara Menjalankan
 
 Dari root project, bisa pakai salah satu cara berikut.

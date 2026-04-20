@@ -127,7 +127,7 @@ def insert_group(con, group_type: str, members: list[dict]) -> int:
     gid = cur.lastrowid
     con.executemany(
         "INSERT INTO group_members (group_id, image_id, score) VALUES (?,?,?)",
-        [(gid, m["image_id"], m["score"]) for m in members],
+        [(gid, int(m["image_id"]), float(m["score"])) for m in members],
     )
     return gid
 

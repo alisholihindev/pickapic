@@ -25,7 +25,12 @@ def make_group_row(
             on_select(m, m["id"] != best["id"])
 
     cards = [
-        make_image_card(m, on_select=on_select, selected=m["id"] in selected_ids, on_preview=on_preview)
+        make_image_card(
+            m,
+            on_select=on_select,
+            selected=m["id"] in selected_ids,
+            on_preview=on_preview,
+        )
         for m in members
     ]
 
@@ -62,6 +67,7 @@ def make_group_row(
         spacing=8,
         scroll=ft.ScrollMode.AUTO,
         vertical_alignment=ft.CrossAxisAlignment.START,
+        tight=True,
     )
 
     return ft.Container(

@@ -132,10 +132,14 @@ class ScannerView(ft.Column):
         page.update()
 
     def _calc_eta(self, done: int, total: int) -> str:
-        if not self._start_time or done == 0:
+        if not self._start_time or done <= 0 or total <= done:
             return ""
         elapsed = time.monotonic() - self._start_time
+        if elapsed <= 0:
+            return "ETA: calculating..."
         rate = done / elapsed
+        if rate <= 0:
+            return "ETA: calculating..."
         remaining = (total - done) / rate
         if remaining < 60:
             return f"ETA: {int(remaining)}s"

@@ -40,6 +40,7 @@ class PickPicApp:
         self.selected_ids: set[int] = set()
         self.selected_paths: dict[int, str] = {}
         self._scanning = False
+        self._scanner_view: ScannerView | None = None
 
         self._folder_picker = ft.FilePicker()
         self._move_picker = ft.FilePicker()
@@ -82,6 +83,8 @@ class PickPicApp:
             on_remove_folder=self._remove_folder,
             on_tab_change=self._switch_tab,
             on_scan=self._start_scan,
+            scan_label="Back to Loading" if self._scanning else "Scan",
+            scan_icon=ft.Icons.ARROW_BACK if self._scanning else ft.Icons.SEARCH,
             on_settings=self._open_settings,
             settings_active=self._settings_active,
         )
@@ -152,6 +155,8 @@ class PickPicApp:
     async def _start_scan(self, e=None):
         import asyncio
         if self._scanning:
+            if self._scanner_view is not None:
+                self._set_main(self._scanner_view)
             return
         if not self.folders:
             self._snack("Add at least one folder first.")
@@ -159,6 +164,8 @@ class PickPicApp:
 
         self._scanning = True
         scanner_view = ScannerView()
+        self._scanner_view = scanner_view
+        self._refresh_sidebar()
         self._set_main(scanner_view)
 
         threading.Thread(target=self._run_scan, args=(scanner_view,), daemon=True).start()
@@ -168,6 +175,8 @@ class PickPicApp:
             await asyncio.sleep(0.2)
 
         scanner_view.render(self.page)
+        self._scanner_view = None
+        self._refresh_sidebar()
 
     def _run_scan(self, scanner_view: ScannerView):
         scan_con = db.get_conn()

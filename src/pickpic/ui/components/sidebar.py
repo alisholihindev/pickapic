@@ -11,6 +11,8 @@ def make_sidebar(
     on_remove_folder,
     on_tab_change,
     on_scan,
+    scan_label: str = "Scan",
+    scan_icon=ft.Icons.SEARCH,
     on_settings=None,
     settings_active: bool = False,
 ) -> ft.Control:
@@ -90,8 +92,8 @@ def make_sidebar(
                 ),
                 ft.Divider(height=12),
                 ft.FilledButton(
-                    "Scan",
-                    icon=ft.Icons.SEARCH,
+                    scan_label,
+                    icon=scan_icon,
                     on_click=on_scan,
                     style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
                 ),

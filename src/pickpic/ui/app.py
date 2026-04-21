@@ -10,7 +10,7 @@ from pathlib import Path
 import flet as ft
 from PIL import ExifTags, Image, UnidentifiedImageError
 
-from pickpic.config import APP_NAME, APP_REPO_URL, Settings
+from pickpic.config import APP_NAME, APP_REPO_URL, APP_SUPPORT_URL, Settings
 from pickpic.core import index as db
 from pickpic.core import actions
 from pickpic.core.scanner import scan_new_only
@@ -280,7 +280,9 @@ class PickPicApp:
             AboutView(
                 app_name=APP_NAME,
                 repo_url=APP_REPO_URL,
+                support_url=APP_SUPPORT_URL,
                 on_open_repo=lambda: self.page.launch_url(APP_REPO_URL),
+                on_open_support=lambda: self.page.launch_url(APP_SUPPORT_URL),
             )
         )
 

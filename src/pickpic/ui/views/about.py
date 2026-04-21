@@ -4,7 +4,14 @@ import flet as ft
 
 
 class AboutView(ft.Column):
-    def __init__(self, app_name: str, repo_url: str, on_open_repo: callable):
+    def __init__(
+        self,
+        app_name: str,
+        repo_url: str,
+        support_url: str,
+        on_open_repo: callable,
+        on_open_support: callable,
+    ):
         super().__init__(
             expand=True,
             scroll=ft.ScrollMode.AUTO,
@@ -54,11 +61,13 @@ class AboutView(ft.Column):
                                         ft.Text("Support The Project", size=18, weight=ft.FontWeight.BOLD),
                                         ft.Text(
                                             "If Pickapic helps you, give the GitHub repo a star. "
-                                            "It helps people discover the project and signals which features matter.",
+                                            "It helps people discover the project and signals which features matter. "
+                                            "If you want to support development directly, you can also send support via Ko-fi.",
                                             size=13,
                                             color=ft.Colors.ON_PRIMARY_CONTAINER,
                                         ),
                                         ft.Row(
+                                            wrap=True,
                                             spacing=12,
                                             controls=[
                                                 ft.FilledButton(
@@ -69,14 +78,33 @@ class AboutView(ft.Column):
                                                         shape=ft.RoundedRectangleBorder(radius=10)
                                                     ),
                                                 ),
-                                                ft.Text(
-                                                    repo_url,
-                                                    size=11,
-                                                    color=ft.Colors.ON_PRIMARY_CONTAINER,
-                                                    selectable=True,
-                                                    expand=True,
+                                                ft.OutlinedButton(
+                                                    "Support on Ko-fi",
+                                                    icon=ft.Icons.FAVORITE_OUTLINE,
+                                                    on_click=lambda _: on_open_support(),
+                                                    style=ft.ButtonStyle(
+                                                        color=ft.Colors.ON_PRIMARY_CONTAINER,
+                                                        side=ft.BorderSide(1, ft.Colors.ON_PRIMARY_CONTAINER),
+                                                        shape=ft.RoundedRectangleBorder(radius=10),
+                                                    ),
                                                 ),
                                             ],
+                                        ),
+                                        ft.TextButton(
+                                            repo_url,
+                                            on_click=lambda _: on_open_repo(),
+                                            style=ft.ButtonStyle(
+                                                color=ft.Colors.ON_PRIMARY_CONTAINER,
+                                                padding=ft.padding.all(0),
+                                            ),
+                                        ),
+                                        ft.TextButton(
+                                            support_url,
+                                            on_click=lambda _: on_open_support(),
+                                            style=ft.ButtonStyle(
+                                                color=ft.Colors.ON_PRIMARY_CONTAINER,
+                                                padding=ft.padding.all(0),
+                                            ),
                                         ),
                                     ],
                                 ),

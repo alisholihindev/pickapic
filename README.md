@@ -181,4 +181,4 @@ python main.py
 
 ## Lisensi
 
-Belum ditentukan.
+MIT License. Lihat file `LICENSE`.

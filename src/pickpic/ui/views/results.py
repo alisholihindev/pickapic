@@ -19,7 +19,13 @@ class ResultsView(ft.ListView):
         self._total = 0
 
     def load_page(self, reset: bool = False):
-        from pickpic.core.index import get_groups_page, count_groups, get_blurry_images
+        from pickpic.core.index import (
+            count_groups,
+            get_blurry_images,
+            get_groups_page,
+            get_images_not_facing_north,
+            get_images_without_geotag,
+        )
 
         if reset:
             self._offset = 0
@@ -41,6 +47,51 @@ class ResultsView(ft.ListView):
                             "width": r["width"] or 0,
                             "height": r["height"] or 0,
                             "score": r["blur_score"],
+                        }],
+                    }
+                    for r in rows
+                ]
+        elif self.group_type == "no_geotag":
+            if reset:
+                rows = get_images_without_geotag(self.con)
+                self._total = len(rows)
+                self._groups = [
+                    {
+                        "id": None,
+                        "members": [{
+                            "id": r["id"],
+                            "path": r["path"],
+                            "blur_score": r["blur_score"],
+                            "is_blurry": 0,
+                            "size": r["size"] or 0,
+                            "width": r["width"] or 0,
+                            "height": r["height"] or 0,
+                            "has_gps": 0,
+                            "score": 0,
+                        }],
+                    }
+                    for r in rows
+                ]
+        elif self.group_type == "not_north":
+            if reset:
+                rows = get_images_not_facing_north(self.con)
+                self._total = len(rows)
+                self._groups = [
+                    {
+                        "id": None,
+                        "members": [{
+                            "id": r["id"],
+                            "path": r["path"],
+                            "blur_score": r["blur_score"],
+                            "is_blurry": 0,
+                            "size": r["size"] or 0,
+                            "width": r["width"] or 0,
+                            "height": r["height"] or 0,
+                            "has_gps": r["has_gps"],
+                            "gps_heading": r["gps_heading"],
+                            "gps_heading_ref": r["gps_heading_ref"],
+                            "is_facing_north": 0,
+                            "score": 0,
                         }],
                     }
                     for r in rows
@@ -77,7 +128,7 @@ class ResultsView(ft.ListView):
         ]
 
         remaining = self._total - len(self._groups)
-        if remaining > 0 and self.group_type != "blurry":
+        if remaining > 0 and self.group_type not in {"blurry", "no_geotag", "not_north"}:
             rows.append(
                 ft.TextButton(
                     f"Load more ({remaining} remaining)",

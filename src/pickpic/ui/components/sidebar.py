@@ -15,6 +15,8 @@ def make_sidebar(
     scan_icon=ft.Icons.SEARCH,
     on_settings=None,
     settings_active: bool = False,
+    on_about=None,
+    about_active: bool = False,
 ) -> ft.Control:
 
     def tab_item(label: str, key: str, icon, count: int) -> ft.Control:
@@ -80,7 +82,7 @@ def make_sidebar(
         padding=ft.padding.symmetric(horizontal=12, vertical=16),
         content=ft.Column(
             controls=[
-                ft.Text("PickPic", size=20, weight=ft.FontWeight.BOLD),
+                ft.Text("Pickapic", size=20, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=12),
                 ft.Text("Folders", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 ft.Column(controls=folder_chips, spacing=4),
@@ -102,6 +104,8 @@ def make_sidebar(
                 tab_item("Exact Dupes", "exact", ft.Icons.COPY_ALL, counts.get("exact", 0)),
                 tab_item("Similar", "similar", ft.Icons.COMPARE, counts.get("similar", 0)),
                 tab_item("Blurry", "blurry", ft.Icons.BLUR_ON, counts.get("blurry", 0)),
+                tab_item("No Geotag", "no_geotag", ft.Icons.PUBLIC_OFF, counts.get("no_geotag", 0)),
+                tab_item("Not North", "not_north", ft.Icons.EXPLORE_OFF, counts.get("not_north", 0)),
                 ft.Divider(height=12),
                 ft.Container(
                     border_radius=8,
@@ -126,11 +130,36 @@ def make_sidebar(
                         spacing=8,
                     ),
                 ),
+                ft.Container(
+                    border_radius=8,
+                    bgcolor=ft.Colors.PRIMARY_CONTAINER if about_active else ft.Colors.TRANSPARENT,
+                    padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                    on_click=lambda _: on_about() if on_about else None,
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(
+                                ft.Icons.INFO_OUTLINE,
+                                size=16,
+                                color=ft.Colors.ON_PRIMARY_CONTAINER if about_active else ft.Colors.OUTLINE,
+                            ),
+                            ft.Text(
+                                "About",
+                                size=13,
+                                weight=ft.FontWeight.W_600 if about_active else ft.FontWeight.W_400,
+                                color=ft.Colors.ON_PRIMARY_CONTAINER if about_active else ft.Colors.ON_SURFACE,
+                                expand=True,
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                ),
                 ft.Divider(height=12),
                 ft.Text("Stats", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 ft.Text(f"Scanned: {counts.get('total', 0):,}", size=12),
                 ft.Text(f"Groups: {total_groups:,}", size=12),
                 ft.Text(f"Blurry: {counts.get('blurry', 0):,}", size=12),
+                ft.Text(f"No Geotag: {counts.get('no_geotag', 0):,}", size=12),
+                ft.Text(f"Not North: {counts.get('not_north', 0):,}", size=12),
             ],
             spacing=6,
             scroll=ft.ScrollMode.AUTO,

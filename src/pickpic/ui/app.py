@@ -4,18 +4,20 @@ import base64
 import io
 import os
 import threading
+from fractions import Fraction
 from pathlib import Path
 
 import flet as ft
-from PIL import Image, UnidentifiedImageError
+from PIL import ExifTags, Image, UnidentifiedImageError
 
-from pickpic.config import APP_NAME, Settings
+from pickpic.config import APP_NAME, APP_REPO_URL, Settings
 from pickpic.core import index as db
 from pickpic.core import actions
 from pickpic.core.scanner import scan_new_only
 from pickpic.core.similarity import find_hash_groups
 from pickpic.ui.components.sidebar import make_sidebar
 from pickpic.ui.components.action_bar import ActionBar
+from pickpic.ui.views.about import AboutView
 from pickpic.ui.views.scanner import ScannerView
 from pickpic.ui.views.results import ResultsView
 from pickpic.ui.views.settings import SettingsView
@@ -37,10 +39,14 @@ class PickPicApp:
         self.folders: list[str] = []
         self.active_tab = "exact"
         self._settings_active = False
+        self._about_active = False
         self.selected_ids: set[int] = set()
         self.selected_paths: dict[int, str] = {}
         self._scanning = False
         self._scanner_view: ScannerView | None = None
+        self._scan_error: str | None = None
+        self._scan_completed = False
+        self._scan_summary: str | None = None
 
         self._folder_picker = ft.FilePicker()
         self._move_picker = ft.FilePicker()
@@ -87,6 +93,8 @@ class PickPicApp:
             scan_icon=ft.Icons.ARROW_BACK if self._scanning else ft.Icons.SEARCH,
             on_settings=self._open_settings,
             settings_active=self._settings_active,
+            on_about=self._open_about,
+            about_active=self._about_active,
         )
 
     def _get_counts(self) -> dict:
@@ -94,6 +102,8 @@ class PickPicApp:
             "exact": db.count_groups(self.con, "exact"),
             "similar": db.count_groups(self.con, "similar"),
             "blurry": db.count_blurry(self.con),
+            "no_geotag": db.count_without_geotag(self.con),
+            "not_north": db.count_not_facing_north(self.con),
             "total": db.count_scanned(self.con),
         }
 
@@ -124,6 +134,7 @@ class PickPicApp:
         self._main_content.update()
 
     def _show_results(self):
+        self._about_active = False
         view = ResultsView(
             con=self.con,
             group_type=self.active_tab,
@@ -163,6 +174,9 @@ class PickPicApp:
             return
 
         self._scanning = True
+        self._scan_error = None
+        self._scan_completed = False
+        self._scan_summary = None
         scanner_view = ScannerView()
         self._scanner_view = scanner_view
         self._refresh_sidebar()
@@ -177,6 +191,12 @@ class PickPicApp:
         scanner_view.render(self.page)
         self._scanner_view = None
         self._refresh_sidebar()
+        if self._scan_error:
+            self._snack(self._scan_error)
+        elif self._scan_completed:
+            self._show_results()
+            if self._scan_summary:
+                self._snack(self._scan_summary)
 
     def _run_scan(self, scanner_view: ScannerView):
         scan_con = db.get_conn()
@@ -217,11 +237,13 @@ class PickPicApp:
             for g in similar_groups:
                 db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
             scan_con.commit()
-
-            self._refresh_sidebar()
-            self._show_results()
+            self._scan_summary = (
+                f"Scan complete. New files: {len(results)}, "
+                f"exact groups: {len(exact_groups)}, similar groups: {len(similar_groups)}."
+            )
+            self._scan_completed = True
         except Exception as exc:
-            self._snack(f"Scan error: {exc}")
+            self._scan_error = f"Scan error: {exc}"
         finally:
             scan_con.close()
             self._scanning = False
@@ -233,6 +255,7 @@ class PickPicApp:
     def _switch_tab(self, key: str):
         self.active_tab = key
         self._settings_active = False
+        self._about_active = False
         self.selected_ids.clear()
         self.selected_paths.clear()
         self._action_bar.update_count(0)
@@ -241,12 +264,25 @@ class PickPicApp:
 
     def _open_settings(self):
         self._settings_active = True
+        self._about_active = False
         self._refresh_sidebar()
         self._set_main(SettingsView(
             settings=self._settings,
             on_save=self._apply_settings,
             on_reset_db=self._handle_reset_db,
         ))
+
+    def _open_about(self):
+        self._settings_active = False
+        self._about_active = True
+        self._refresh_sidebar()
+        self._set_main(
+            AboutView(
+                app_name=APP_NAME,
+                repo_url=APP_REPO_URL,
+                on_open_repo=lambda: self.page.launch_url(APP_REPO_URL),
+            )
+        )
 
     def _handle_reset_db(self):
         def confirm(e):
@@ -276,6 +312,7 @@ class PickPicApp:
 
     def _apply_settings(self):
         self._settings_active = False
+        self._about_active = False
         self._refresh_sidebar()
         self._snack("Settings saved. Re-grouping...")
         threading.Thread(target=self._regroup, daemon=True).start()
@@ -409,29 +446,152 @@ class PickPicApp:
     # Helpers
     # ──────────────────────────────────────────────
 
+    def _format_exif_value(self, value) -> str:
+        if isinstance(value, bytes):
+            return value.hex()
+        if isinstance(value, Fraction):
+            return str(float(value))
+        if isinstance(value, tuple):
+            return ", ".join(self._format_exif_value(v) for v in value)
+        return str(value)
+
+    def _extract_exif_sections(self, img: Image.Image) -> list[tuple[str, list[tuple[str, str]]]]:
+        try:
+            exif = img.getexif()
+        except Exception:
+            return []
+        if not exif:
+            return []
+
+        basic: list[tuple[str, str]] = []
+        camera: list[tuple[str, str]] = []
+        capture: list[tuple[str, str]] = []
+        other: list[tuple[str, str]] = []
+
+        basic_tags = {
+            "ImageWidth",
+            "ImageLength",
+            "Orientation",
+            "ImageDescription",
+            "Software",
+        }
+        camera_tags = {
+            "Make",
+            "Model",
+            "LensMake",
+            "LensModel",
+            "FocalLength",
+            "FNumber",
+        }
+        capture_tags = {
+            "DateTime",
+            "DateTimeOriginal",
+            "DateTimeDigitized",
+            "ExposureTime",
+            "ISOSpeedRatings",
+            "PhotographicSensitivity",
+            "Flash",
+        }
+
+        for tag_id, value in exif.items():
+            if tag_id == ExifTags.IFD.GPSInfo:
+                continue
+            tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+            formatted = self._format_exif_value(value)
+            item = (tag_name, formatted)
+            if tag_name in basic_tags:
+                basic.append(item)
+            elif tag_name in camera_tags:
+                camera.append(item)
+            elif tag_name in capture_tags:
+                capture.append(item)
+            else:
+                other.append(item)
+
+        gps: list[tuple[str, str]] = []
+        try:
+            gps_info = exif.get_ifd(ExifTags.IFD.GPSInfo)
+        except Exception:
+            gps_info = None
+        if gps_info and hasattr(gps_info, "items"):
+            for tag_id, value in gps_info.items():
+                tag_name = ExifTags.GPSTAGS.get(tag_id, f"GPS {tag_id}")
+                gps.append((tag_name, self._format_exif_value(value)))
+
+        sections: list[tuple[str, list[tuple[str, str]]]] = []
+        for title, items in (
+            ("File", basic),
+            ("Camera", camera),
+            ("Capture", capture),
+            ("GPS", gps),
+            ("Other EXIF", other),
+        ):
+            if items:
+                sections.append((title, items))
+        return sections
+
+    def _make_exif_section(self, title: str, items: list[tuple[str, str]]) -> ft.Control:
+        rows = [
+            ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Text(label, size=10, color=ft.Colors.ON_SURFACE, weight=ft.FontWeight.W_500, width=150),
+                    ft.Text(value, size=10, color=ft.Colors.OUTLINE, selectable=True, expand=True),
+                ],
+            )
+            for label, value in items
+        ]
+
+        return ft.Container(
+            padding=ft.padding.all(10),
+            border_radius=8,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            content=ft.Column(
+                tight=True,
+                spacing=6,
+                controls=[
+                    ft.Text(title, size=12, weight=ft.FontWeight.W_600),
+                    *rows,
+                ],
+            ),
+        )
+
     def _show_preview(self, path: str):
         try:
             with Image.open(path) as img:
+                orig_w, orig_h = img.size
+                exif_sections = self._extract_exif_sections(img)
                 img.thumbnail((800, 600), Image.LANCZOS)
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=85)
                 b64 = base64.b64encode(buf.getvalue()).decode()
-                orig_w, orig_h = img.size
         except (UnidentifiedImageError, OSError):
             self._snack("Could not open image.")
             return
 
         size = Path(path).stat().st_size if Path(path).exists() else 0
         size_str = f"{size / 1024 / 1024:.2f} MB" if size >= 1024 * 1024 else f"{size / 1024:.1f} KB"
+        exif_controls: list[ft.Control] = [ft.Text("Metadata", size=12, weight=ft.FontWeight.W_600)]
+        if exif_sections:
+            exif_controls.extend(
+                self._make_exif_section(title, items) for title, items in exif_sections
+            )
+        else:
+            exif_controls.append(
+                ft.Text("No EXIF metadata found.", size=10, color=ft.Colors.OUTLINE)
+            )
 
         dlg = ft.AlertDialog(
             title=ft.Text(Path(path).name, overflow=ft.TextOverflow.ELLIPSIS),
             content=ft.Column(
                 tight=True,
+                scroll=ft.ScrollMode.AUTO,
                 controls=[
-                    ft.Image(src=f"data:image/jpeg;base64,{b64}", fit=ft.BoxFit.CONTAIN, width=800, height=550),
+                    ft.Image(src=f"data:image/jpeg;base64,{b64}", fit=ft.BoxFit.CONTAIN, width=800, height=420),
                     ft.Text(path, size=10, color=ft.Colors.OUTLINE, selectable=True),
                     ft.Text(f"{orig_w}×{orig_h}  ·  {size_str}", size=11, color=ft.Colors.OUTLINE),
+                    ft.Column(tight=True, spacing=8, controls=exif_controls),
                 ],
             ),
             actions=[ft.TextButton("Close", on_click=lambda _: self.page.pop_dialog())],

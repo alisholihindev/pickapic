@@ -41,6 +41,10 @@ def _process_image(path: str, blur_threshold: float) -> dict | None:
         "height": hashes["height"],
         "phash": hashes["phash"],
         "dhash": hashes["dhash"],
+        "has_gps": hashes["has_gps"],
+        "gps_heading": hashes["gps_heading"],
+        "gps_heading_ref": hashes["gps_heading_ref"],
+        "is_facing_north": hashes["is_facing_north"],
         "blur_score": score,
         "is_blurry": is_blurry(score, blur_threshold),
     }

@@ -4,7 +4,9 @@ import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-APP_NAME = "PickPic"
+APP_NAME = "Pickapic"
+APP_REPO_URL = "https://github.com/alisholihindev/pickapic"
+APP_RELEASES_URL = f"{APP_REPO_URL}/releases"
 APP_DIR = Path.home() / ".pickpic"
 DB_PATH = APP_DIR / "index.db"
 THUMB_CACHE_DIR = APP_DIR / "thumbs"

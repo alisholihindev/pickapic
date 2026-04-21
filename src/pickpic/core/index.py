@@ -5,6 +5,8 @@ from pathlib import Path
 
 from pickpic.config import DB_PATH
 
+SCAN_METADATA_VERSION = 2
+
 
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -19,6 +21,11 @@ def init_db() -> None:
                 height     INTEGER,
                 phash      TEXT,
                 dhash      TEXT,
+                has_gps    INTEGER,
+                gps_heading REAL,
+                gps_heading_ref TEXT,
+                is_facing_north INTEGER,
+                metadata_version INTEGER,
                 blur_score REAL,
                 is_blurry  INTEGER DEFAULT 0,
                 scanned_at REAL
@@ -49,6 +56,17 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_undo_batch ON undo_log(batch_id);
         """)
+        cols = {row["name"] for row in con.execute("PRAGMA table_info(images)").fetchall()}
+        if "has_gps" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN has_gps INTEGER")
+        if "gps_heading" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN gps_heading REAL")
+        if "gps_heading_ref" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN gps_heading_ref TEXT")
+        if "is_facing_north" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN is_facing_north INTEGER")
+        if "metadata_version" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN metadata_version INTEGER")
 
 
 @contextmanager
@@ -75,23 +93,53 @@ def get_conn():
 
 def is_cached(con, path: str, mtime: float, size: int) -> bool:
     row = con.execute(
-        "SELECT 1 FROM images WHERE path=? AND mtime=? AND size=? AND phash IS NOT NULL",
-        (path, mtime, size),
+        """SELECT 1 FROM images
+           WHERE path=? AND mtime=? AND size=? AND phash IS NOT NULL
+             AND COALESCE(metadata_version, 0) >= ?""",
+        (path, mtime, size, SCAN_METADATA_VERSION),
     ).fetchone()
     return row is not None
 
 
-def upsert_image(con, *, path, mtime, size, width, height, phash, dhash, blur_score, is_blurry):
+def upsert_image(
+    con,
+    *,
+    path,
+    mtime,
+    size,
+    width,
+    height,
+    phash,
+    dhash,
+    has_gps,
+    gps_heading,
+    gps_heading_ref,
+    is_facing_north,
+    blur_score,
+    is_blurry,
+):
     con.execute(
-        """INSERT INTO images (path, mtime, size, width, height, phash, dhash, blur_score, is_blurry, scanned_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)
+        """INSERT INTO images (
+               path, mtime, size, width, height, phash, dhash, has_gps,
+               gps_heading, gps_heading_ref, is_facing_north, metadata_version,
+               blur_score, is_blurry, scanned_at
+           )
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(path) DO UPDATE SET
                mtime=excluded.mtime, size=excluded.size,
                width=excluded.width, height=excluded.height,
-               phash=excluded.phash, dhash=excluded.dhash,
+               phash=excluded.phash, dhash=excluded.dhash, has_gps=excluded.has_gps,
+               gps_heading=excluded.gps_heading, gps_heading_ref=excluded.gps_heading_ref,
+               is_facing_north=excluded.is_facing_north, metadata_version=excluded.metadata_version,
                blur_score=excluded.blur_score, is_blurry=excluded.is_blurry,
                scanned_at=excluded.scanned_at""",
-        (path, mtime, size, width, height, phash, dhash, blur_score, int(is_blurry), time.time()),
+        (
+            path, mtime, size, width, height, phash, dhash, int(has_gps),
+            gps_heading, gps_heading_ref,
+            None if is_facing_north is None else int(is_facing_north),
+            SCAN_METADATA_VERSION,
+            blur_score, int(is_blurry), time.time(),
+        ),
     )
 
 
@@ -102,7 +150,28 @@ def get_all_hashes(con) -> list[dict]:
 
 def get_blurry_images(con) -> list[dict]:
     rows = con.execute(
-        "SELECT id, path, blur_score, size, width, height FROM images WHERE is_blurry=1 ORDER BY blur_score ASC"
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+           FROM images WHERE is_blurry=1 ORDER BY blur_score ASC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_images_without_geotag(con) -> list[dict]:
+    rows = con.execute(
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+           FROM images
+           WHERE has_gps=0
+           ORDER BY path COLLATE NOCASE"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_images_not_facing_north(con) -> list[dict]:
+    rows = con.execute(
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+           FROM images
+           WHERE has_gps=1 AND is_facing_north=0
+           ORDER BY gps_heading ASC, path COLLATE NOCASE"""
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -140,7 +209,8 @@ def get_groups_page(con, group_type: str, offset: int, limit: int) -> list[dict]
     groups = []
     for row in rows:
         members = con.execute(
-            """SELECT i.id, i.path, i.width, i.height, i.size, i.blur_score,
+            """SELECT i.id, i.path, i.width, i.height, i.size, i.blur_score, i.has_gps,
+                      i.gps_heading, i.gps_heading_ref, i.is_facing_north,
                       gm.score, gm.is_kept
                FROM group_members gm JOIN images i ON i.id=gm.image_id
                WHERE gm.group_id=?""",
@@ -158,6 +228,16 @@ def count_groups(con, group_type: str) -> int:
 
 def count_blurry(con) -> int:
     return con.execute("SELECT COUNT(*) FROM images WHERE is_blurry=1").fetchone()[0]
+
+
+def count_without_geotag(con) -> int:
+    return con.execute("SELECT COUNT(*) FROM images WHERE has_gps=0").fetchone()[0]
+
+
+def count_not_facing_north(con) -> int:
+    return con.execute(
+        "SELECT COUNT(*) FROM images WHERE has_gps=1 AND is_facing_north=0"
+    ).fetchone()[0]
 
 
 def count_scanned(con) -> int:

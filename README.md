@@ -1,6 +1,6 @@
-# PickPic
+# Pickapic
 
-PickPic adalah aplikasi desktop berbasis Python + Flet untuk membantu mencari foto duplikat, gambar mirip, dan gambar blur dari folder lokal. Aplikasi ini cocok untuk membersihkan koleksi gambar seperti hasil kamera, screenshot, atau folder arsip yang sudah menumpuk.
+Pickapic adalah aplikasi desktop berbasis Python + Flet untuk membantu mencari foto duplikat, gambar mirip, dan gambar blur dari folder lokal. Aplikasi ini cocok untuk membersihkan koleksi gambar seperti hasil kamera, screenshot, atau folder arsip yang sudah menumpuk.
 
 ## Fitur Utama
 
@@ -57,7 +57,7 @@ pip install -e .
 
 Kalau tidak ingin menjalankan dari source code, aplikasi bisa diunduh dari halaman release GitHub:
 
-- [GitHub Releases PickPic](https://github.com/alisholihindev/pickapic/releases)
+- [GitHub Releases Pickapic](https://github.com/alisholihindev/pickapic/releases)
 
 Langkah umum:
 
@@ -149,7 +149,7 @@ Catatan: dukungan preview bisa bergantung pada kemampuan library gambar yang dip
 
 ## Penyimpanan Data Lokal
 
-PickPic menyimpan data lokal di folder home user:
+Pickapic menyimpan data lokal di folder home user:
 
 - database cache: `~/.pickpic/index.db`
 - settings: `~/.pickpic/settings.json`

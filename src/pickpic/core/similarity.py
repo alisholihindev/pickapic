@@ -1,14 +1,33 @@
 from __future__ import annotations
 
-import numpy as np
-import hnswlib
+
+def _hamming_distance(a: str, b: str) -> int:
+    return (int(a, 16) ^ int(b, 16)).bit_count()
 
 
-def _phash_to_vec(phash_hex: str) -> np.ndarray:
-    """Convert 16-char hex pHash to 64-bit uint8 vector."""
-    val = int(phash_hex, 16)
-    bits = np.array([(val >> i) & 1 for i in range(63, -1, -1)], dtype=np.float32)
-    return bits
+def _connected_components(edges: dict[int, set[int]]) -> list[list[int]]:
+    groups: list[list[int]] = []
+    seen: set[int] = set()
+
+    for start in edges:
+        if start in seen:
+            continue
+        stack = [start]
+        group: list[int] = []
+        seen.add(start)
+
+        while stack:
+            node = stack.pop()
+            group.append(node)
+            for neighbor in edges[node]:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+
+        if len(group) > 1:
+            groups.append(sorted(group))
+
+    return groups
 
 
 def find_hash_groups(
@@ -19,54 +38,32 @@ def find_hash_groups(
     """
     records: [{id, phash}, ...]
     Returns (exact_groups, similar_groups) — each group is a list of image ids.
-    Uses hnswlib with hamming-like L2 on bit vectors.
     """
     if len(records) < 2:
         return [], []
 
-    ids = [r["id"] for r in records]
-    vecs = np.stack([_phash_to_vec(r["phash"]) for r in records])
+    by_phash: dict[str, list[int]] = {}
+    for row in records:
+        by_phash.setdefault(row["phash"], []).append(int(row["id"]))
 
-    n = len(ids)
-    dim = 64
-    index = hnswlib.Index(space="l2", dim=dim)
-    index.init_index(max_elements=n, ef_construction=200, M=16)
-    index.add_items(vecs, ids)
-    index.set_ef(50)
+    exact_groups = [sorted(ids) for ids in by_phash.values() if len(ids) > 1]
+    exact_member_ids = {image_id for group in exact_groups for image_id in group}
 
-    labels, distances = index.knn_query(vecs, k=min(10, n))
+    remaining = [
+        {"id": int(row["id"]), "phash": row["phash"]}
+        for row in records
+        if int(row["id"]) not in exact_member_ids
+    ]
+    if len(remaining) < 2:
+        return exact_groups, []
 
-    visited = set()
-    exact_groups: list[list[int]] = []
-    similar_groups: list[list[int]] = []
+    edges: dict[int, set[int]] = {row["id"]: set() for row in remaining}
+    for i, left in enumerate(remaining):
+        for right in remaining[i + 1:]:
+            distance = _hamming_distance(left["phash"], right["phash"])
+            if hash_distance_exact < distance <= hash_distance_similar:
+                edges[left["id"]].add(right["id"])
+                edges[right["id"]].add(left["id"])
 
-    for i, (neighbors, dists) in enumerate(zip(labels, distances)):
-        src_id = ids[i]
-        if src_id in visited:
-            continue
-        exact = [src_id]
-        similar = []
-        for nb_id, dist in zip(neighbors, dists):
-            if nb_id == src_id:
-                continue
-            if nb_id in visited:
-                continue
-            d = int(round(dist))
-            if d <= hash_distance_exact:
-                exact.append(nb_id)
-            elif d <= hash_distance_similar:
-                similar.append(nb_id)
-
-        if len(exact) > 1:
-            for eid in exact:
-                visited.add(eid)
-            exact_groups.append(exact)
-        elif similar:
-            group = [src_id] + similar
-            for sid in group:
-                visited.add(sid)
-            similar_groups.append(group)
-
+    similar_groups = _connected_components(edges)
     return exact_groups, similar_groups
-
-

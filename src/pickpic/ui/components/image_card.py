@@ -44,6 +44,10 @@ def make_image_card(
     dim_str = f"{w}×{h}" if w and h else ""
     blur_score = member.get("blur_score")
     is_blurry = bool(member.get("is_blurry"))
+    has_gps = member.get("has_gps")
+    gps_heading = member.get("gps_heading")
+    gps_heading_ref = member.get("gps_heading_ref")
+    is_facing_north = member.get("is_facing_north")
 
     b64 = _thumb_b64(path)
     if b64:
@@ -70,6 +74,24 @@ def make_image_card(
             ft.Container(
                 content=ft.Text("Blurry", size=9, color=ft.Colors.WHITE),
                 bgcolor=ft.Colors.ERROR,
+                border_radius=4,
+                padding=ft.padding.symmetric(horizontal=4, vertical=2),
+            )
+        )
+    if has_gps == 0:
+        badges.append(
+            ft.Container(
+                content=ft.Text("No GPS", size=9, color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.AMBER,
+                border_radius=4,
+                padding=ft.padding.symmetric(horizontal=4, vertical=2),
+            )
+        )
+    if is_facing_north == 0:
+        badges.append(
+            ft.Container(
+                content=ft.Text("Not North", size=9, color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.ORANGE,
                 border_radius=4,
                 padding=ft.padding.symmetric(horizontal=4, vertical=2),
             )
@@ -116,6 +138,12 @@ def make_image_card(
         meta_rows.append(
             ft.Text(f"Score: {blur_score:.1f}", size=10, color=ft.Colors.ERROR)
         )
+    if has_gps == 0:
+        meta_rows.append(ft.Text("EXIF GPS missing", size=10, color=ft.Colors.AMBER))
+    if gps_heading is not None:
+        ref = f" {gps_heading_ref}" if gps_heading_ref else ""
+        color = ft.Colors.GREEN if is_facing_north == 1 else ft.Colors.ORANGE
+        meta_rows.append(ft.Text(f"Heading: {gps_heading:.1f}°{ref}", size=10, color=color))
 
     return ft.Container(
         width=160,

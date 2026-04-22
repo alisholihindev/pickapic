@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import flet as ft
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from pickpic.config import THUMB_SIZE
 
@@ -15,6 +15,7 @@ from pickpic.config import THUMB_SIZE
 def _thumb_b64(path: str) -> str | None:
     try:
         with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
             img.thumbnail(THUMB_SIZE, Image.LANCZOS)
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=70)
@@ -36,6 +37,7 @@ def make_image_card(
     on_select: callable,
     selected: bool = False,
     on_preview: callable | None = None,
+    display_orientation: str = "landscape",
 ) -> ft.Control:
     path = member["path"]
     name = Path(path).name
@@ -49,19 +51,35 @@ def make_image_card(
     gps_heading_ref = member.get("gps_heading_ref")
     is_facing_north = member.get("is_facing_north")
 
+    if display_orientation == "portrait":
+        thumb_width = 128
+        thumb_height = 176
+        card_width = 140
+    else:
+        thumb_width = 148
+        thumb_height = 120
+        card_width = 160
+
     b64 = _thumb_b64(path)
     if b64:
-        thumb = ft.Image(
-            src=f"data:image/jpeg;base64,{b64}",
-            width=148,
-            height=120,
-            fit=ft.BoxFit.COVER,
+        thumb = ft.Container(
+            width=thumb_width,
+            height=thumb_height,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             border_radius=ft.border_radius.only(top_left=8, top_right=8),
+            alignment=ft.alignment.Alignment.CENTER,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            content=ft.Image(
+                src=f"data:image/jpeg;base64,{b64}",
+                width=thumb_width,
+                height=thumb_height,
+                fit=ft.BoxFit.CONTAIN,
+            ),
         )
     else:
         thumb = ft.Container(
-            width=148,
-            height=120,
+            width=thumb_width,
+            height=thumb_height,
             bgcolor=ft.Colors.SURFACE_CONTAINER,
             border_radius=ft.border_radius.only(top_left=8, top_right=8),
             content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=40, color=ft.Colors.OUTLINE),
@@ -146,7 +164,7 @@ def make_image_card(
         meta_rows.append(ft.Text(f"Heading: {gps_heading:.1f}°{ref}", size=10, color=color))
 
     return ft.Container(
-        width=160,
+        width=card_width,
         border_radius=8,
         border=ft.border.all(2, ft.Colors.PRIMARY if selected else ft.Colors.OUTLINE_VARIANT),
         bgcolor=ft.Colors.SURFACE,

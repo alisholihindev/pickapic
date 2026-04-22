@@ -7,13 +7,22 @@ from pickpic.config import RESULTS_PAGE
 
 
 class ResultsView(ft.ListView):
-    def __init__(self, con, group_type: str, selected_ids: set, on_select: callable, on_preview: callable | None = None):
+    def __init__(
+        self,
+        con,
+        group_type: str,
+        selected_ids: set,
+        on_select: callable,
+        on_preview: callable | None = None,
+        display_orientation: str = "landscape",
+    ):
         super().__init__(spacing=0, expand=True)
         self.con = con
         self.group_type = group_type
         self.selected_ids = selected_ids
         self.on_select = on_select
         self.on_preview = on_preview
+        self.display_orientation = display_orientation
         self._groups: list[dict] = []
         self._offset = 0
         self._total = 0
@@ -123,7 +132,14 @@ class ResultsView(ft.ListView):
             return
 
         rows = [
-            make_group_row(g, self.selected_ids, self.on_select, self.group_type, on_preview=self.on_preview)
+            make_group_row(
+                g,
+                self.selected_ids,
+                self.on_select,
+                self.group_type,
+                on_preview=self.on_preview,
+                display_orientation=self.display_orientation,
+            )
             for g in self._groups
         ]
 

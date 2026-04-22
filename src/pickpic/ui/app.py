@@ -8,7 +8,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import flet as ft
-from PIL import ExifTags, Image, UnidentifiedImageError
+from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
 from pickpic.config import APP_NAME, APP_REPO_URL, APP_SUPPORT_URL, Settings
 from pickpic.core import index as db
@@ -141,6 +141,7 @@ class PickPicApp:
             selected_ids=self.selected_ids,
             on_select=self._toggle_select,
             on_preview=self._show_preview,
+            display_orientation=self._settings.image_display_orientation,
         )
         view.load_page(reset=True)
         self._set_main(view)
@@ -223,11 +224,15 @@ class PickPicApp:
             scan_con.commit()
 
             scanner_view.set_stage(2)
+            scanner_view.set_phase("Finding duplicates")
             hashes = db.get_all_hashes(scan_con)
 
             exact_groups, similar_groups = find_hash_groups(
                 hashes,
                 hash_distance_similar=self._settings.hash_distance_similar,
+                progress_cb=lambda done, total, label: scanner_view.update_progress(
+                    done, total, label
+                ),
             )
 
             scan_con.execute("BEGIN")
@@ -316,6 +321,7 @@ class PickPicApp:
         self._settings_active = False
         self._about_active = False
         self._refresh_sidebar()
+        self._show_results()
         self._snack("Settings saved. Re-grouping...")
         threading.Thread(target=self._regroup, daemon=True).start()
 
@@ -562,9 +568,14 @@ class PickPicApp:
     def _show_preview(self, path: str):
         try:
             with Image.open(path) as img:
+                img = ImageOps.exif_transpose(img)
                 orig_w, orig_h = img.size
                 exif_sections = self._extract_exif_sections(img)
-                img.thumbnail((800, 600), Image.LANCZOS)
+                if self._settings.image_display_orientation == "portrait":
+                    preview_width, preview_height = 520, 700
+                else:
+                    preview_width, preview_height = 800, 420
+                img.thumbnail((preview_width, preview_height), Image.LANCZOS)
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=85)
                 b64 = base64.b64encode(buf.getvalue()).decode()
@@ -590,7 +601,12 @@ class PickPicApp:
                 tight=True,
                 scroll=ft.ScrollMode.AUTO,
                 controls=[
-                    ft.Image(src=f"data:image/jpeg;base64,{b64}", fit=ft.BoxFit.CONTAIN, width=800, height=420),
+                    ft.Image(
+                        src=f"data:image/jpeg;base64,{b64}",
+                        fit=ft.BoxFit.CONTAIN,
+                        width=preview_width,
+                        height=preview_height,
+                    ),
                     ft.Text(path, size=10, color=ft.Colors.OUTLINE, selectable=True),
                     ft.Text(f"{orig_w}×{orig_h}  ·  {size_str}", size=11, color=ft.Colors.OUTLINE),
                     ft.Column(tight=True, spacing=8, controls=exif_controls),

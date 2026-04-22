@@ -32,6 +32,7 @@ class Settings:
     hash_distance_similar: int = 10
     blur_threshold: float = 100.0
     min_file_size_kb: int = 0
+    image_display_orientation: str = "landscape"
 
     @classmethod
     def load(cls) -> "Settings":

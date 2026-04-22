@@ -17,6 +17,7 @@ class ScannerView(ft.Column):
         self._start_time: float | None = None
         self.done = 0
         self.total = 0
+        self.phase_label = ""
         self.current_file = ""
 
         self._stage_dots: list[ft.Container] = []
@@ -75,9 +76,10 @@ class ScannerView(ft.Column):
     # Called from scan thread — only mutates plain Python state
     def set_stage(self, stage: int):
         self.current_stage = stage
-        self._start_time = time.monotonic() if stage == 1 else None
+        self._start_time = time.monotonic() if stage > 0 else None
         self.done = 0
         self.total = 0
+        self.phase_label = STAGES[stage][1] if 0 <= stage < len(STAGES) else ""
         self.current_file = ""
 
     def update_progress(self, done: int, total: int, current: str):
@@ -120,12 +122,14 @@ class ScannerView(ft.Column):
             pct = int(done / total * 100)
             self._bar.value = done / total
             self._percent.value = f"{pct}%"
-            self._detail.value = f"{done:,} / {total:,} files"
+            unit = "pairs" if self.current_stage == 2 else "files"
+            prefix = f"{self.phase_label} • " if self.phase_label else ""
+            self._detail.value = f"{prefix}{done:,} / {total:,} {unit}"
             self._eta.value = self._calc_eta(done, total)
         else:
             self._bar.value = None
             self._percent.value = ""
-            self._detail.value = ""
+            self._detail.value = self.phase_label
             self._eta.value = ""
 
         self._file.value = self.current_file[-60:] if self.current_file else ""
@@ -150,4 +154,4 @@ class ScannerView(ft.Column):
         return f"ETA: {hours}h {minutes}m"
 
     def set_phase(self, label: str):
-        pass
+        self.phase_label = label

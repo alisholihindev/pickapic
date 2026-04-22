@@ -31,6 +31,15 @@ class SettingsView(ft.Column):
             keyboard_type=ft.KeyboardType.NUMBER,
             width=200,
         )
+        self._orientation_dropdown = ft.Dropdown(
+            width=220,
+            value="landscape",
+            options=[
+                ft.dropdown.Option("portrait", "Portrait"),
+                ft.dropdown.Option("landscape", "Landscape"),
+            ],
+        )
+        self._orientation_dropdown.on_change = self._on_orientation_change
 
         super().__init__(
             controls=[self._build()],
@@ -97,6 +106,14 @@ class SettingsView(ft.Column):
                     self._size_field,
                     ft.Divider(),
 
+                    ft.Text("Image Display Mode", size=14, weight=ft.FontWeight.W_600),
+                    ft.Text(
+                        "Choose how image cards are presented in results.",
+                        size=12, color=ft.Colors.OUTLINE,
+                    ),
+                    self._orientation_dropdown,
+                    ft.Divider(),
+
                     ft.Row(
                         controls=[
                             ft.FilledButton(
@@ -145,6 +162,7 @@ class SettingsView(ft.Column):
         self._sim_slider.value = float(self._settings.hash_distance_similar)
         self._blur_slider.value = float(self._settings.blur_threshold)
         self._size_field.value = str(self._settings.min_file_size_kb)
+        self._orientation_dropdown.value = self._settings.image_display_orientation
         self._update_sim_label()
         self._update_blur_label()
         self._rebuild_preset_chips()
@@ -227,12 +245,16 @@ class SettingsView(ft.Column):
             desc = "Loose — catches mildly blurry images"
         self._blur_label.value = f"Threshold < {t:.0f}  ·  {desc}"
 
+    def _on_orientation_change(self, e):
+        self._settings.image_display_orientation = e.control.value or "landscape"
+
     def _save(self, e=None):
         try:
             kb = int(self._size_field.value or "0")
             self._settings.min_file_size_kb = max(0, kb)
         except ValueError:
             self._settings.min_file_size_kb = 0
+        self._settings.image_display_orientation = self._orientation_dropdown.value or "landscape"
         self._settings.save()
         self._on_save()
 
@@ -246,5 +268,6 @@ class SettingsView(ft.Column):
             self._sim_label.update()
             self._blur_label.update()
             self._size_field.update()
+            self._orientation_dropdown.update()
         except Exception:
             pass

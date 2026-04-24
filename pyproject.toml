@@ -1,6 +1,6 @@
 [project]
 name = "pickpic"
-version = "1.2.0"
+version = "1.2.1"
 description = "High-performance image duplicate finder and manager"
 requires-python = ">=3.11"
 dependencies = [

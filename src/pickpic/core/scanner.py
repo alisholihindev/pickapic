@@ -1,24 +1,29 @@
 from __future__ import annotations
 
 import os
-import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
-from pickpic.config import IMAGE_EXTENSIONS, SCAN_CHUNK
-from pickpic.core.hasher import compute_hashes
+from pickpic.config import IMAGE_EXTENSIONS
 from pickpic.core.blur import compute_blur_score, is_blurry
+from pickpic.core.hasher import compute_hashes
+from pickpic.core.scan_control import ScanController
 
 
 def _discover_images(
     folders: list[str],
     progress_cb: Callable[[int, int, str], None] | None = None,
+    controller: ScanController | None = None,
 ) -> list[str]:
     paths = []
     for folder in folders:
         for root, _, files in os.walk(folder):
+            if controller:
+                controller.checkpoint()
             for f in files:
+                if controller:
+                    controller.checkpoint()
                 if Path(f).suffix.lower() in IMAGE_EXTENSIONS:
                     p = os.path.join(root, f)
                     paths.append(p)
@@ -42,6 +47,8 @@ def _process_image(path: str, blur_threshold: float) -> dict | None:
         "phash": hashes["phash"],
         "dhash": hashes["dhash"],
         "has_gps": hashes["has_gps"],
+        "gps_lat": hashes["gps_lat"],
+        "gps_lon": hashes["gps_lon"],
         "gps_heading": hashes["gps_heading"],
         "gps_heading_ref": hashes["gps_heading_ref"],
         "is_facing_north": hashes["is_facing_north"],
@@ -57,11 +64,14 @@ def scan_new_only(
     workers: int | None = None,
     blur_threshold: float = 100.0,
     min_file_size_bytes: int = 0,
+    controller: ScanController | None = None,
 ) -> list[dict]:
     """Scan folders, skipping already-cached files."""
-    paths = _discover_images(folders, progress_cb)
+    paths = _discover_images(folders, progress_cb, controller=controller)
     to_process = []
     for p in paths:
+        if controller:
+            controller.checkpoint()
         try:
             stat = os.stat(p)
             if min_file_size_bytes and stat.st_size < min_file_size_bytes:
@@ -83,18 +93,52 @@ def scan_new_only(
         return results
 
     workers = workers or min(os.cpu_count() or 4, 8)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_process_image, p, blur_threshold): p for p in to_process}
-        for fut in as_completed(futures):
-            p = futures[fut]
-            done += 1
-            try:
-                result = fut.result()
-                if result:
-                    results.append(result)
-            except Exception:
-                pass
-            if progress_cb:
-                progress_cb(done, total_scan, p)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        pending_paths = iter(to_process)
+        futures: dict = {}
+
+        def submit_more():
+            while len(futures) < workers:
+                try:
+                    path = next(pending_paths)
+                except StopIteration:
+                    return
+                if controller:
+                    controller.checkpoint()
+                futures[pool.submit(_process_image, path, blur_threshold)] = path
+
+        submit_more()
+        try:
+            while futures:
+                if controller:
+                    controller.checkpoint()
+                completed, _ = wait(
+                    tuple(futures),
+                    timeout=0.1,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not completed:
+                    continue
+                for fut in completed:
+                    p = futures.pop(fut)
+                    done += 1
+                    try:
+                        result = fut.result()
+                        if result:
+                            results.append(result)
+                    except Exception:
+                        pass
+                    if progress_cb:
+                        progress_cb(done, total_scan, p)
+                submit_more()
+        finally:
+            for fut in futures:
+                fut.cancel()
+    except Exception:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        pool.shutdown(wait=True)
 
     return results

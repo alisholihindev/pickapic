@@ -13,6 +13,7 @@ from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 from pickpic.config import APP_NAME, APP_REPO_URL, APP_SUPPORT_URL, Settings
 from pickpic.core import index as db
 from pickpic.core import actions
+from pickpic.core.scan_control import ScanAborted, ScanController
 from pickpic.core.scanner import scan_new_only
 from pickpic.core.similarity import find_hash_groups
 from pickpic.ui.components.sidebar import make_sidebar
@@ -44,9 +45,11 @@ class PickPicApp:
         self.selected_paths: dict[int, str] = {}
         self._scanning = False
         self._scanner_view: ScannerView | None = None
+        self._scan_controller: ScanController | None = None
         self._scan_error: str | None = None
         self._scan_completed = False
         self._scan_summary: str | None = None
+        self._scan_aborted = False
 
         self._folder_picker = ft.FilePicker()
         self._move_picker = ft.FilePicker()
@@ -101,6 +104,7 @@ class PickPicApp:
         return {
             "exact": db.count_groups(self.con, "exact"),
             "similar": db.count_groups(self.con, "similar"),
+            "dup_geotag": db.count_groups(self.con, "dup_geotag"),
             "blurry": db.count_blurry(self.con),
             "no_geotag": db.count_without_geotag(self.con),
             "not_north": db.count_not_facing_north(self.con),
@@ -175,32 +179,67 @@ class PickPicApp:
             return
 
         self._scanning = True
+        self._scan_controller = ScanController()
         self._scan_error = None
         self._scan_completed = False
         self._scan_summary = None
-        scanner_view = ScannerView()
+        self._scan_aborted = False
+        scanner_view = ScannerView(
+            on_pause_resume=self._toggle_scan_pause,
+            on_abort=self._abort_scan,
+        )
         self._scanner_view = scanner_view
         self._refresh_sidebar()
         self._set_main(scanner_view)
 
-        threading.Thread(target=self._run_scan, args=(scanner_view,), daemon=True).start()
+        scan_folders = list(self.folders)
+        threading.Thread(
+            target=self._run_scan,
+            args=(scanner_view, scan_folders),
+            daemon=True,
+        ).start()
 
         while self._scanning:
+            if self._scan_controller is not None:
+                scanner_view.set_run_state(
+                    paused=self._scan_controller.is_paused,
+                    aborting=self._scan_controller.is_aborted,
+                )
             scanner_view.render(self.page)
             await asyncio.sleep(0.2)
 
         scanner_view.render(self.page)
         self._scanner_view = None
+        self._scan_controller = None
         self._refresh_sidebar()
         if self._scan_error:
             self._snack(self._scan_error)
+        elif self._scan_aborted:
+            self._settings_active = False
+            self._about_active = False
+            self._set_main(self._empty_view())
+            self._snack("Scan aborted.")
         elif self._scan_completed:
             self._show_results()
             if self._scan_summary:
                 self._snack(self._scan_summary)
 
-    def _run_scan(self, scanner_view: ScannerView):
+    def _toggle_scan_pause(self, e=None):
+        if not self._scan_controller or self._scan_controller.is_aborted:
+            return
+        if self._scan_controller.is_paused:
+            self._scan_controller.resume()
+        else:
+            self._scan_controller.pause()
+
+    def _abort_scan(self, e=None):
+        if not self._scan_controller:
+            return
+        self._scan_controller.abort()
+
+    def _run_scan(self, scanner_view: ScannerView, folders: list[str]):
         scan_con = db.get_conn()
+        controller = self._scan_controller
         try:
             def progress(done, total, path):
                 if total == 0:
@@ -211,15 +250,20 @@ class PickPicApp:
                     scanner_view.update_progress(done, total, path)
 
             results = scan_new_only(
-                self.folders,
+                folders,
                 is_cached_fn=lambda p, m, s: db.is_cached(scan_con, p, m, s),
                 progress_cb=progress,
                 blur_threshold=self._settings.blur_threshold,
                 min_file_size_bytes=self._settings.min_file_size_kb * 1024,
+                controller=controller,
             )
 
+            if controller:
+                controller.checkpoint()
             scan_con.execute("BEGIN")
             for r in results:
+                if controller:
+                    controller.checkpoint()
                 db.upsert_image(scan_con, **r)
             scan_con.commit()
 
@@ -233,20 +277,42 @@ class PickPicApp:
                 progress_cb=lambda done, total, label: scanner_view.update_progress(
                     done, total, label
                 ),
+                controller=controller,
             )
 
+            if controller:
+                controller.checkpoint()
             scan_con.execute("BEGIN")
             db.clear_groups(scan_con)
             for g in exact_groups:
+                if controller:
+                    controller.checkpoint()
                 db.insert_group(scan_con, "exact", [{"image_id": i, "score": 1.0} for i in g])
             for g in similar_groups:
+                if controller:
+                    controller.checkpoint()
                 db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
+            scan_con.commit()
+
+            scanner_view.set_stage(3)
+            scanner_view.set_phase("Grouping duplicated geotags")
+            if controller:
+                controller.checkpoint()
+            dup_geotag_groups = db.find_duplicate_geotag_groups(scan_con)
+            scan_con.execute("BEGIN")
+            for g in dup_geotag_groups:
+                if controller:
+                    controller.checkpoint()
+                db.insert_group(scan_con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
             scan_con.commit()
             self._scan_summary = (
                 f"Scan complete. New files: {len(results)}, "
-                f"exact groups: {len(exact_groups)}, similar groups: {len(similar_groups)}."
+                f"exact groups: {len(exact_groups)}, similar groups: {len(similar_groups)}, "
+                f"duplicate geotag groups: {len(dup_geotag_groups)}."
             )
             self._scan_completed = True
+        except ScanAborted:
+            self._scan_aborted = True
         except Exception as exc:
             self._scan_error = f"Scan error: {exc}"
         finally:
@@ -351,6 +417,8 @@ class PickPicApp:
                 db.insert_group(con, "exact", [{"image_id": i, "score": 1.0} for i in g])
             for g in similar_groups:
                 db.insert_group(con, "similar", [{"image_id": i, "score": 0.9} for i in g])
+            for g in db.find_duplicate_geotag_groups(con):
+                db.insert_group(con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
             con.commit()
 
             self._refresh_sidebar()

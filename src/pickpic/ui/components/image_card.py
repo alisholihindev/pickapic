@@ -47,6 +47,8 @@ def make_image_card(
     blur_score = member.get("blur_score")
     is_blurry = bool(member.get("is_blurry"))
     has_gps = member.get("has_gps")
+    gps_lat = member.get("gps_lat")
+    gps_lon = member.get("gps_lon")
     gps_heading = member.get("gps_heading")
     gps_heading_ref = member.get("gps_heading_ref")
     is_facing_north = member.get("is_facing_north")
@@ -158,6 +160,10 @@ def make_image_card(
         )
     if has_gps == 0:
         meta_rows.append(ft.Text("EXIF GPS missing", size=10, color=ft.Colors.AMBER))
+    elif gps_lat is not None and gps_lon is not None:
+        meta_rows.append(
+            ft.Text(f"GPS: {gps_lat:.6f}, {gps_lon:.6f}", size=10, color=ft.Colors.OUTLINE)
+        )
     if gps_heading is not None:
         ref = f" {gps_heading_ref}" if gps_heading_ref else ""
         color = ft.Colors.GREEN if is_facing_north == 1 else ft.Colors.ORANGE

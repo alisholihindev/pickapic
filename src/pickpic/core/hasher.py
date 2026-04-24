@@ -59,6 +59,44 @@ def _to_float(value) -> float | None:
         return None
 
 
+def _to_degrees(value) -> float | None:
+    if not isinstance(value, (list, tuple)) or len(value) < 3:
+        return None
+    degrees = _to_float(value[0])
+    minutes = _to_float(value[1])
+    seconds = _to_float(value[2])
+    if degrees is None or minutes is None or seconds is None:
+        return None
+    return degrees + (minutes / 60.0) + (seconds / 3600.0)
+
+
+def _extract_coordinates(img: Image.Image) -> tuple[float | None, float | None]:
+    gps_info = _get_gps_info(img)
+    if not gps_info:
+        return None, None
+
+    lat = _to_degrees(gps_info.get(GPS_LAT_TAG))
+    lon = _to_degrees(gps_info.get(GPS_LON_TAG))
+    lat_ref = gps_info.get(GPS_LAT_REF_TAG)
+    lon_ref = gps_info.get(GPS_LON_REF_TAG)
+    if lat is None or lon is None or lat_ref is None or lon_ref is None:
+        return None, None
+
+    lat_ref = str(lat_ref).strip().upper()[:1]
+    lon_ref = str(lon_ref).strip().upper()[:1]
+    if lat_ref == "S":
+        lat = -lat
+    elif lat_ref != "N":
+        return None, None
+
+    if lon_ref == "W":
+        lon = -lon
+    elif lon_ref != "E":
+        return None, None
+
+    return round(lat, 6), round(lon, 6)
+
+
 def _extract_heading(img: Image.Image) -> tuple[float | None, str | None, bool | None]:
     gps_info = _get_gps_info(img)
     if not gps_info:
@@ -76,7 +114,7 @@ def _extract_heading(img: Image.Image) -> tuple[float | None, str | None, bool |
 
 
 def compute_hashes(path: str) -> dict | None:
-    """Return {phash, dhash, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north} or None on error."""
+    """Return image hashes and extracted metadata or None on error."""
     try:
         with Image.open(path) as img:
             img.load()
@@ -84,6 +122,7 @@ def compute_hashes(path: str) -> dict | None:
             ph = str(imagehash.phash(img))
             dh = str(imagehash.dhash(img))
             has_gps = _has_exif_gps(img)
+            gps_lat, gps_lon = _extract_coordinates(img)
             gps_heading, gps_heading_ref, is_facing_north = _extract_heading(img)
         return {
             "phash": ph,
@@ -91,6 +130,8 @@ def compute_hashes(path: str) -> dict | None:
             "width": w,
             "height": h,
             "has_gps": has_gps,
+            "gps_lat": gps_lat,
+            "gps_lon": gps_lon,
             "gps_heading": gps_heading,
             "gps_heading_ref": gps_heading_ref,
             "is_facing_north": is_facing_north,

@@ -73,7 +73,7 @@ def make_sidebar(
         for f in folders
     ]
 
-    total_groups = sum(counts.get(k, 0) for k in ("exact", "similar"))
+    total_groups = sum(counts.get(k, 0) for k in ("exact", "similar", "dup_geotag"))
 
     return ft.Container(
         width=220,
@@ -103,6 +103,7 @@ def make_sidebar(
                 ft.Text("Categories", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 tab_item("Exact Dupes", "exact", ft.Icons.COPY_ALL, counts.get("exact", 0)),
                 tab_item("Similar", "similar", ft.Icons.COMPARE, counts.get("similar", 0)),
+                tab_item("Dup Geotag", "dup_geotag", ft.Icons.PLACE, counts.get("dup_geotag", 0)),
                 tab_item("Blurry", "blurry", ft.Icons.BLUR_ON, counts.get("blurry", 0)),
                 tab_item("No Geotag", "no_geotag", ft.Icons.PUBLIC_OFF, counts.get("no_geotag", 0)),
                 tab_item("Not North", "not_north", ft.Icons.EXPLORE_OFF, counts.get("not_north", 0)),
@@ -157,6 +158,7 @@ def make_sidebar(
                 ft.Text("Stats", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 ft.Text(f"Scanned: {counts.get('total', 0):,}", size=12),
                 ft.Text(f"Groups: {total_groups:,}", size=12),
+                ft.Text(f"Dup Geotag: {counts.get('dup_geotag', 0):,}", size=12),
                 ft.Text(f"Blurry: {counts.get('blurry', 0):,}", size=12),
                 ft.Text(f"No Geotag: {counts.get('no_geotag', 0):,}", size=12),
                 ft.Text(f"Not North: {counts.get('not_north', 0):,}", size=12),

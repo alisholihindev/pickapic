@@ -12,18 +12,28 @@ def make_group_row(
     group_type: str,
     on_preview: callable | None = None,
     display_orientation: str = "landscape",
+    on_bulk_change: callable | None = None,
 ) -> ft.Control:
     members = group["members"]
     count_text = f"{len(members)} images"
+    if group_type == "dup_geotag" and members:
+        lat = members[0].get("gps_lat")
+        lon = members[0].get("gps_lon")
+        if lat is not None and lon is not None:
+            count_text = f"{count_text}  ·  {lat:.6f}, {lon:.6f}"
 
     def _select_all(_):
         for m in members:
             on_select(m, True)
+        if on_bulk_change:
+            on_bulk_change()
 
     def _keep_best(_):
         best = max(members, key=lambda m: (m.get("width") or 0) * (m.get("height") or 0))
         for m in members:
             on_select(m, m["id"] != best["id"])
+        if on_bulk_change:
+            on_bulk_change()
 
     cards = [
         make_image_card(

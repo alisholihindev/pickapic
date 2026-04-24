@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from pickpic.core.scan_control import ScanController
+
 
 def _hamming_distance(a: str, b: str) -> int:
     return (int(a, 16) ^ int(b, 16)).bit_count()
@@ -37,6 +39,7 @@ def find_hash_groups(
     hash_distance_exact: int = 0,
     hash_distance_similar: int = 10,
     progress_cb: Callable[[int, int, str], None] | None = None,
+    controller: ScanController | None = None,
 ) -> tuple[list[list[int]], list[list[int]]]:
     """
     records: [{id, phash}, ...]
@@ -69,7 +72,11 @@ def find_hash_groups(
     if progress_cb:
         progress_cb(0, total_pairs, "Comparing image hashes")
     for i, left in enumerate(remaining):
+        if controller:
+            controller.checkpoint()
         for right in remaining[i + 1:]:
+            if controller:
+                controller.checkpoint()
             distance = _hamming_distance(left["phash"], right["phash"])
             if hash_distance_exact < distance <= hash_distance_similar:
                 edges[left["id"]].add(right["id"])

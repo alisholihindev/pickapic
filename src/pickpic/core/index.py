@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pickpic.config import DB_PATH
 
-SCAN_METADATA_VERSION = 2
+SCAN_METADATA_VERSION = 3
 
 
 def init_db() -> None:
@@ -22,6 +22,8 @@ def init_db() -> None:
                 phash      TEXT,
                 dhash      TEXT,
                 has_gps    INTEGER,
+                gps_lat    REAL,
+                gps_lon    REAL,
                 gps_heading REAL,
                 gps_heading_ref TEXT,
                 is_facing_north INTEGER,
@@ -63,6 +65,10 @@ def init_db() -> None:
             con.execute("ALTER TABLE images ADD COLUMN gps_heading REAL")
         if "gps_heading_ref" not in cols:
             con.execute("ALTER TABLE images ADD COLUMN gps_heading_ref TEXT")
+        if "gps_lat" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN gps_lat REAL")
+        if "gps_lon" not in cols:
+            con.execute("ALTER TABLE images ADD COLUMN gps_lon REAL")
         if "is_facing_north" not in cols:
             con.execute("ALTER TABLE images ADD COLUMN is_facing_north INTEGER")
         if "metadata_version" not in cols:
@@ -112,6 +118,8 @@ def upsert_image(
     phash,
     dhash,
     has_gps,
+    gps_lat,
+    gps_lon,
     gps_heading,
     gps_heading_ref,
     is_facing_north,
@@ -120,21 +128,22 @@ def upsert_image(
 ):
     con.execute(
         """INSERT INTO images (
-               path, mtime, size, width, height, phash, dhash, has_gps,
+               path, mtime, size, width, height, phash, dhash, has_gps, gps_lat, gps_lon,
                gps_heading, gps_heading_ref, is_facing_north, metadata_version,
                blur_score, is_blurry, scanned_at
            )
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(path) DO UPDATE SET
                mtime=excluded.mtime, size=excluded.size,
                width=excluded.width, height=excluded.height,
                phash=excluded.phash, dhash=excluded.dhash, has_gps=excluded.has_gps,
+               gps_lat=excluded.gps_lat, gps_lon=excluded.gps_lon,
                gps_heading=excluded.gps_heading, gps_heading_ref=excluded.gps_heading_ref,
                is_facing_north=excluded.is_facing_north, metadata_version=excluded.metadata_version,
                blur_score=excluded.blur_score, is_blurry=excluded.is_blurry,
                scanned_at=excluded.scanned_at""",
         (
-            path, mtime, size, width, height, phash, dhash, int(has_gps),
+            path, mtime, size, width, height, phash, dhash, int(has_gps), gps_lat, gps_lon,
             gps_heading, gps_heading_ref,
             None if is_facing_north is None else int(is_facing_north),
             SCAN_METADATA_VERSION,
@@ -150,7 +159,8 @@ def get_all_hashes(con) -> list[dict]:
 
 def get_blurry_images(con) -> list[dict]:
     rows = con.execute(
-        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_lat, gps_lon,
+                  gps_heading, gps_heading_ref, is_facing_north
            FROM images WHERE is_blurry=1 ORDER BY blur_score ASC"""
     ).fetchall()
     return [dict(r) for r in rows]
@@ -158,7 +168,8 @@ def get_blurry_images(con) -> list[dict]:
 
 def get_images_without_geotag(con) -> list[dict]:
     rows = con.execute(
-        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_lat, gps_lon,
+                  gps_heading, gps_heading_ref, is_facing_north
            FROM images
            WHERE has_gps=0
            ORDER BY path COLLATE NOCASE"""
@@ -168,7 +179,8 @@ def get_images_without_geotag(con) -> list[dict]:
 
 def get_images_not_facing_north(con) -> list[dict]:
     rows = con.execute(
-        """SELECT id, path, blur_score, size, width, height, has_gps, gps_heading, gps_heading_ref, is_facing_north
+        """SELECT id, path, blur_score, size, width, height, has_gps, gps_lat, gps_lon,
+                  gps_heading, gps_heading_ref, is_facing_north
            FROM images
            WHERE has_gps=1 AND is_facing_north=0
            ORDER BY gps_heading ASC, path COLLATE NOCASE"""
@@ -179,6 +191,24 @@ def get_images_not_facing_north(con) -> list[dict]:
 def clear_groups(con) -> None:
     con.execute("DELETE FROM group_members")
     con.execute("DELETE FROM dup_groups")
+
+
+def find_duplicate_geotag_groups(con) -> list[list[int]]:
+    rows = con.execute(
+        """SELECT gps_lat, gps_lon, GROUP_CONCAT(id) AS ids, COUNT(*) AS image_count,
+                  COUNT(DISTINCT COALESCE(phash, '') || ':' || COALESCE(dhash, '')) AS hash_count
+           FROM images
+           WHERE has_gps=1 AND gps_lat IS NOT NULL AND gps_lon IS NOT NULL
+           GROUP BY gps_lat, gps_lon
+           HAVING image_count > 1 AND hash_count > 1
+           ORDER BY image_count DESC, gps_lat ASC, gps_lon ASC"""
+    ).fetchall()
+    groups: list[list[int]] = []
+    for row in rows:
+        ids = [int(v) for v in str(row["ids"]).split(",") if v]
+        if len(ids) > 1:
+            groups.append(ids)
+    return groups
 
 
 def reset_db(con) -> None:
@@ -210,7 +240,7 @@ def get_groups_page(con, group_type: str, offset: int, limit: int) -> list[dict]
     for row in rows:
         members = con.execute(
             """SELECT i.id, i.path, i.width, i.height, i.size, i.blur_score, i.has_gps,
-                      i.gps_heading, i.gps_heading_ref, i.is_facing_north,
+                      i.gps_lat, i.gps_lon, i.gps_heading, i.gps_heading_ref, i.is_facing_north,
                       gm.score, gm.is_kept
                FROM group_members gm JOIN images i ON i.id=gm.image_id
                WHERE gm.group_id=?""",

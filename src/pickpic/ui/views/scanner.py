@@ -8,17 +8,22 @@ STAGES = [
     (ft.Icons.SEARCH, "Discovering files"),
     (ft.Icons.IMAGE_SEARCH, "Scanning images"),
     (ft.Icons.COMPARE_ARROWS, "Finding duplicates"),
+    (ft.Icons.PLACE, "Grouping geotags"),
 ]
 
 
 class ScannerView(ft.Column):
-    def __init__(self):
+    def __init__(self, on_pause_resume=None, on_abort=None):
         self.current_stage = 0
         self._start_time: float | None = None
         self.done = 0
         self.total = 0
         self.phase_label = ""
         self.current_file = ""
+        self.is_paused = False
+        self.is_aborting = False
+        self._on_pause_resume = on_pause_resume
+        self._on_abort = on_abort
 
         self._stage_dots: list[ft.Container] = []
         self._stage_icons: list[ft.Icon] = []
@@ -42,12 +47,34 @@ class ScannerView(ft.Column):
         self._bar = ft.ProgressBar(value=None, width=440)
         self._detail = ft.Text("", size=13, color=ft.Colors.OUTLINE)
         self._eta = ft.Text("", size=13, color=ft.Colors.PRIMARY)
+        self._status = ft.Text("", size=12, color=ft.Colors.PRIMARY)
         self._file = ft.Text(
             "", size=11, color=ft.Colors.OUTLINE,
             overflow=ft.TextOverflow.ELLIPSIS, width=440,
         )
         self._spinner = ft.ProgressRing(
             width=20, height=20, stroke_width=2, color=ft.Colors.PRIMARY
+        )
+        self._pause_button = ft.OutlinedButton(
+            "Pause",
+            icon=ft.Icons.PAUSE,
+            on_click=self._on_pause_resume,
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+        )
+        self._abort_button = ft.OutlinedButton(
+            "Abort",
+            icon=ft.Icons.STOP,
+            on_click=self._on_abort,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ERROR,
+                side=ft.BorderSide(1, ft.Colors.ERROR),
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+        self._actions = ft.Row(
+            controls=[self._pause_button, self._abort_button],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=12,
         )
 
         super().__init__(
@@ -63,9 +90,12 @@ class ScannerView(ft.Column):
                 ft.Container(height=6),
                 self._detail,
                 self._eta,
+                self._status,
                 self._file,
                 ft.Container(height=8),
                 self._spinner,
+                ft.Container(height=16),
+                self._actions,
                 ft.Container(expand=True),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -88,6 +118,10 @@ class ScannerView(ft.Column):
         self.done = done
         self.total = total
         self.current_file = current
+
+    def set_run_state(self, *, paused: bool, aborting: bool):
+        self.is_paused = paused
+        self.is_aborting = aborting
 
     # Called from Flet's async event loop — safe to update controls
     def render(self, page: ft.Page):
@@ -131,6 +165,29 @@ class ScannerView(ft.Column):
             self._percent.value = ""
             self._detail.value = self.phase_label
             self._eta.value = ""
+
+        if self.is_aborting:
+            self._status.value = "Stopping scan..."
+            self._status.color = ft.Colors.ERROR
+            self._spinner.visible = True
+            self._pause_button.disabled = True
+            self._abort_button.disabled = True
+        elif self.is_paused:
+            self._status.value = "Paused"
+            self._status.color = ft.Colors.TERTIARY
+            self._spinner.visible = False
+            self._pause_button.text = "Resume"
+            self._pause_button.icon = ft.Icons.PLAY_ARROW
+            self._pause_button.disabled = False
+            self._abort_button.disabled = False
+        else:
+            self._status.value = "Scanning in progress"
+            self._status.color = ft.Colors.PRIMARY
+            self._spinner.visible = True
+            self._pause_button.text = "Pause"
+            self._pause_button.icon = ft.Icons.PAUSE
+            self._pause_button.disabled = False
+            self._abort_button.disabled = False
 
         self._file.value = self.current_file[-60:] if self.current_file else ""
         page.update()

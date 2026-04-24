@@ -27,6 +27,13 @@ class ResultsView(ft.ListView):
         self._offset = 0
         self._total = 0
 
+    def _select_all_current(self, _=None):
+        for group in self._groups:
+            for member in group["members"]:
+                self.on_select(member, True)
+        self._rebuild_controls()
+        self.update()
+
     def load_page(self, reset: bool = False):
         from pickpic.core.index import (
             count_groups,
@@ -55,6 +62,12 @@ class ResultsView(ft.ListView):
                             "size": r["size"] or 0,
                             "width": r["width"] or 0,
                             "height": r["height"] or 0,
+                            "has_gps": r["has_gps"],
+                            "gps_lat": r["gps_lat"],
+                            "gps_lon": r["gps_lon"],
+                            "gps_heading": r["gps_heading"],
+                            "gps_heading_ref": r["gps_heading_ref"],
+                            "is_facing_north": r["is_facing_north"],
                             "score": r["blur_score"],
                         }],
                     }
@@ -76,6 +89,8 @@ class ResultsView(ft.ListView):
                             "width": r["width"] or 0,
                             "height": r["height"] or 0,
                             "has_gps": 0,
+                            "gps_lat": None,
+                            "gps_lon": None,
                             "score": 0,
                         }],
                     }
@@ -97,6 +112,8 @@ class ResultsView(ft.ListView):
                             "width": r["width"] or 0,
                             "height": r["height"] or 0,
                             "has_gps": r["has_gps"],
+                            "gps_lat": r["gps_lat"],
+                            "gps_lon": r["gps_lon"],
                             "gps_heading": r["gps_heading"],
                             "gps_heading_ref": r["gps_heading_ref"],
                             "is_facing_north": 0,
@@ -131,7 +148,41 @@ class ResultsView(ft.ListView):
             ]
             return
 
-        rows = [
+        rows: list[ft.Control] = []
+
+        if self.group_type in {"blurry", "no_geotag"}:
+            summary_text = (
+                f"{self._total:,} blurry images"
+                if self.group_type == "blurry"
+                else f"{self._total:,} images without GPS"
+            )
+            rows.append(
+                ft.Container(
+                    padding=ft.padding.symmetric(horizontal=8, vertical=8),
+                    content=ft.Row(
+                        controls=[
+                            ft.Text(
+                                summary_text,
+                                size=13,
+                                color=ft.Colors.OUTLINE,
+                                weight=ft.FontWeight.W_500,
+                            ),
+                            ft.Container(expand=True),
+                            ft.TextButton(
+                                "Select All",
+                                icon=ft.Icons.SELECT_ALL,
+                                on_click=self._select_all_current,
+                                style=ft.ButtonStyle(
+                                    padding=ft.padding.symmetric(horizontal=8)
+                                ),
+                            ),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                )
+            )
+
+        rows.extend(
             make_group_row(
                 g,
                 self.selected_ids,
@@ -139,9 +190,10 @@ class ResultsView(ft.ListView):
                 self.group_type,
                 on_preview=self.on_preview,
                 display_orientation=self.display_orientation,
+                on_bulk_change=self.refresh,
             )
             for g in self._groups
-        ]
+        )
 
         remaining = self._total - len(self._groups)
         if remaining > 0 and self.group_type not in {"blurry", "no_geotag", "not_north"}:

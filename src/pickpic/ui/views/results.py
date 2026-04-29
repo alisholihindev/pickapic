@@ -15,6 +15,7 @@ class ResultsView(ft.ListView):
         on_select: callable,
         on_preview: callable | None = None,
         display_orientation: str = "landscape",
+        feature_gps: bool = True,
     ):
         super().__init__(spacing=0, expand=True)
         self.con = con
@@ -23,6 +24,7 @@ class ResultsView(ft.ListView):
         self.on_select = on_select
         self.on_preview = on_preview
         self.display_orientation = display_orientation
+        self.feature_gps = feature_gps
         self._groups: list[dict] = []
         self._offset = 0
         self._total = 0
@@ -191,6 +193,7 @@ class ResultsView(ft.ListView):
                 on_preview=self.on_preview,
                 display_orientation=self.display_orientation,
                 on_bulk_change=self.refresh,
+                feature_gps=self.feature_gps,
             )
             for g in self._groups
         )

@@ -113,7 +113,7 @@ def _extract_heading(img: Image.Image) -> tuple[float | None, str | None, bool |
     return heading, heading_ref, delta <= NORTH_TOLERANCE_DEGREES
 
 
-def compute_hashes(path: str) -> dict | None:
+def compute_hashes(path: str, extract_gps: bool = True) -> dict | None:
     """Return image hashes and extracted metadata or None on error."""
     try:
         with Image.open(path) as img:
@@ -121,9 +121,16 @@ def compute_hashes(path: str) -> dict | None:
             w, h = img.size
             ph = str(imagehash.phash(img))
             dh = str(imagehash.dhash(img))
-            has_gps = _has_exif_gps(img)
-            gps_lat, gps_lon = _extract_coordinates(img)
-            gps_heading, gps_heading_ref, is_facing_north = _extract_heading(img)
+            if extract_gps:
+                has_gps = _has_exif_gps(img)
+                gps_lat, gps_lon = _extract_coordinates(img)
+                gps_heading, gps_heading_ref, is_facing_north = _extract_heading(img)
+            else:
+                has_gps = False
+                gps_lat = gps_lon = None
+                gps_heading = None
+                gps_heading_ref = None
+                is_facing_north = None
         return {
             "phash": ph,
             "dhash": dh,

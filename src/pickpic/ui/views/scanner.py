@@ -4,16 +4,44 @@ import time
 
 import flet as ft
 
-STAGES = [
-    (ft.Icons.SEARCH, "Discovering files"),
-    (ft.Icons.IMAGE_SEARCH, "Scanning images"),
-    (ft.Icons.COMPARE_ARROWS, "Finding duplicates"),
-    (ft.Icons.PLACE, "Grouping geotags"),
+ALL_STAGES = [
+    (0, ft.Icons.SEARCH, "Discovering files"),
+    (1, ft.Icons.IMAGE_SEARCH, "Scanning images"),
+    (2, ft.Icons.COMPARE_ARROWS, "Finding duplicates"),
+    (3, ft.Icons.PLACE, "Grouping geotags"),
 ]
 
 
+def _build_stages(feature_duplicates: bool = True, feature_gps: bool = True) -> list[tuple]:
+    stages = [
+        (ft.Icons.SEARCH, "Discovering files"),
+        (ft.Icons.IMAGE_SEARCH, "Scanning images"),
+    ]
+    if feature_duplicates:
+        stages.append((ft.Icons.COMPARE_ARROWS, "Finding duplicates"))
+    if feature_gps:
+        stages.append((ft.Icons.PLACE, "Grouping geotags"))
+    return stages
+
+
+# Keep backward-compatible default
+STAGES = _build_stages()
+
+
 class ScannerView(ft.Column):
-    def __init__(self, on_pause_resume=None, on_abort=None):
+    def __init__(self, on_pause_resume=None, on_abort=None,
+                 feature_duplicates: bool = True, feature_gps: bool = True):
+        self._active_stages = _build_stages(feature_duplicates, feature_gps)
+        # Map from global stage index (0-3) to local display index
+        self._stage_map: dict[int, int] = {}
+        local = 0
+        self._stage_map[0] = local; local += 1  # discover always present
+        self._stage_map[1] = local; local += 1  # scan always present
+        if feature_duplicates:
+            self._stage_map[2] = local; local += 1
+        if feature_gps:
+            self._stage_map[3] = local; local += 1
+
         self.current_stage = 0
         self._start_time: float | None = None
         self.done = 0
@@ -29,7 +57,7 @@ class ScannerView(ft.Column):
         self._stage_icons: list[ft.Icon] = []
         self._stage_labels: list[ft.Text] = []
         self._stage_rows: list[ft.Row] = []
-        for icon_name, label in STAGES:
+        for icon_name, label in self._active_stages:
             ic = ft.Icon(icon_name, size=14, color=ft.Colors.OUTLINE)
             dot = ft.Container(
                 width=28, height=28, border_radius=14,
@@ -105,11 +133,17 @@ class ScannerView(ft.Column):
 
     # Called from scan thread — only mutates plain Python state
     def set_stage(self, stage: int):
-        self.current_stage = stage
-        self._start_time = time.monotonic() if stage > 0 else None
+        # Map global stage index to local display index
+        local = self._stage_map.get(stage, stage)
+        self.current_stage = local
+        self._start_time = time.monotonic() if local > 0 else None
         self.done = 0
         self.total = 0
-        self.phase_label = STAGES[stage][1] if 0 <= stage < len(STAGES) else ""
+        self.phase_label = (
+            self._active_stages[local][1]
+            if 0 <= local < len(self._active_stages)
+            else ""
+        )
         self.current_file = ""
 
     def update_progress(self, done: int, total: int, current: str):
@@ -127,8 +161,8 @@ class ScannerView(ft.Column):
     def render(self, page: ft.Page):
         done, total = self.done, self.total
 
-        for i in range(len(STAGES)):
-            icon_name, _ = STAGES[i]
+        for i in range(len(self._active_stages)):
+            icon_name, _ = self._active_stages[i]
             dot = self._stage_dots[i]
             ic = self._stage_icons[i]
             lbl = self._stage_labels[i]
@@ -156,7 +190,7 @@ class ScannerView(ft.Column):
             pct = int(done / total * 100)
             self._bar.value = done / total
             self._percent.value = f"{pct}%"
-            unit = "pairs" if self.current_stage == 2 else "files"
+            unit = "pairs" if "duplicates" in self.phase_label.lower() else "files"
             prefix = f"{self.phase_label} • " if self.phase_label else ""
             self._detail.value = f"{prefix}{done:,} / {total:,} {unit}"
             self._eta.value = self._calc_eta(done, total)

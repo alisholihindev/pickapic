@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import flet as ft
 
+from pickpic.config import APP_LOGO_PATH, Settings
+
 
 def make_sidebar(
     folders: list[str],
@@ -17,6 +19,7 @@ def make_sidebar(
     settings_active: bool = False,
     on_about=None,
     about_active: bool = False,
+    settings: Settings | None = None,
 ) -> ft.Control:
 
     def tab_item(label: str, key: str, icon, count: int) -> ft.Control:
@@ -73,7 +76,38 @@ def make_sidebar(
         for f in folders
     ]
 
+    feat_dup = settings.feature_duplicates if settings else True
+    feat_blur = settings.feature_blur if settings else True
+    feat_gps = settings.feature_gps if settings else True
+
+    category_tabs: list[ft.Control] = []
+    if feat_dup:
+        category_tabs.append(tab_item("Exact Dupes", "exact", ft.Icons.COPY_ALL, counts.get("exact", 0)))
+        category_tabs.append(tab_item("Similar", "similar", ft.Icons.COMPARE, counts.get("similar", 0)))
+    if feat_gps:
+        category_tabs.append(tab_item("Dup Geotag", "dup_geotag", ft.Icons.PLACE, counts.get("dup_geotag", 0)))
+    if feat_blur:
+        category_tabs.append(tab_item("Blurry", "blurry", ft.Icons.BLUR_ON, counts.get("blurry", 0)))
+    if feat_gps:
+        category_tabs.append(tab_item("No Geotag", "no_geotag", ft.Icons.PUBLIC_OFF, counts.get("no_geotag", 0)))
+        category_tabs.append(tab_item("Not North", "not_north", ft.Icons.EXPLORE_OFF, counts.get("not_north", 0)))
+
     total_groups = sum(counts.get(k, 0) for k in ("exact", "similar", "dup_geotag"))
+
+    header_controls: list[ft.Control] = []
+    if APP_LOGO_PATH.exists():
+        header_controls.append(
+            ft.Image(
+                src=str(APP_LOGO_PATH),
+                width=40,
+                height=40,
+                fit=ft.BoxFit.CONTAIN,
+                border_radius=8,
+            )
+        )
+    header_controls.append(
+        ft.Text("Pickapic", size=20, weight=ft.FontWeight.BOLD, expand=True)
+    )
 
     return ft.Container(
         width=220,
@@ -82,7 +116,11 @@ def make_sidebar(
         padding=ft.padding.symmetric(horizontal=12, vertical=16),
         content=ft.Column(
             controls=[
-                ft.Text("Pickapic", size=20, weight=ft.FontWeight.BOLD),
+                ft.Row(
+                    controls=header_controls,
+                    spacing=10,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 ft.Divider(height=12),
                 ft.Text("Folders", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 ft.Column(controls=folder_chips, spacing=4),
@@ -101,12 +139,7 @@ def make_sidebar(
                 ),
                 ft.Divider(height=12),
                 ft.Text("Categories", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
-                tab_item("Exact Dupes", "exact", ft.Icons.COPY_ALL, counts.get("exact", 0)),
-                tab_item("Similar", "similar", ft.Icons.COMPARE, counts.get("similar", 0)),
-                tab_item("Dup Geotag", "dup_geotag", ft.Icons.PLACE, counts.get("dup_geotag", 0)),
-                tab_item("Blurry", "blurry", ft.Icons.BLUR_ON, counts.get("blurry", 0)),
-                tab_item("No Geotag", "no_geotag", ft.Icons.PUBLIC_OFF, counts.get("no_geotag", 0)),
-                tab_item("Not North", "not_north", ft.Icons.EXPLORE_OFF, counts.get("not_north", 0)),
+                *category_tabs,
                 ft.Divider(height=12),
                 ft.Container(
                     border_radius=8,
@@ -157,11 +190,25 @@ def make_sidebar(
                 ft.Divider(height=12),
                 ft.Text("Stats", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.OUTLINE),
                 ft.Text(f"Scanned: {counts.get('total', 0):,}", size=12),
-                ft.Text(f"Groups: {total_groups:,}", size=12),
-                ft.Text(f"Dup Geotag: {counts.get('dup_geotag', 0):,}", size=12),
-                ft.Text(f"Blurry: {counts.get('blurry', 0):,}", size=12),
-                ft.Text(f"No Geotag: {counts.get('no_geotag', 0):,}", size=12),
-                ft.Text(f"Not North: {counts.get('not_north', 0):,}", size=12),
+                *(
+                    [ft.Text(f"Groups: {total_groups:,}", size=12)]
+                    if feat_dup else []
+                ),
+                *(
+                    [ft.Text(f"Dup Geotag: {counts.get('dup_geotag', 0):,}", size=12)]
+                    if feat_gps else []
+                ),
+                *(
+                    [ft.Text(f"Blurry: {counts.get('blurry', 0):,}", size=12)]
+                    if feat_blur else []
+                ),
+                *(
+                    [
+                        ft.Text(f"No Geotag: {counts.get('no_geotag', 0):,}", size=12),
+                        ft.Text(f"Not North: {counts.get('not_north', 0):,}", size=12),
+                    ]
+                    if feat_gps else []
+                ),
             ],
             spacing=6,
             scroll=ft.ScrollMode.AUTO,

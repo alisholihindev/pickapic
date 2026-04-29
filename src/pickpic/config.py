@@ -9,6 +9,9 @@ APP_REPO_URL = "https://github.com/alisholihindev/pickapic"
 APP_RELEASES_URL = f"{APP_REPO_URL}/releases"
 APP_SUPPORT_URL = "https://ko-fi.com/alisholihin"
 APP_DIR = Path.home() / ".pickpic"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+APP_LOGO_PATH = ASSETS_DIR / "pickapic-logo.png"
+APP_ICON_PATH = ASSETS_DIR / "pickapic-icon.ico"
 DB_PATH = APP_DIR / "index.db"
 THUMB_CACHE_DIR = APP_DIR / "thumbs"
 SETTINGS_PATH = APP_DIR / "settings.json"
@@ -33,6 +36,9 @@ class Settings:
     blur_threshold: float = 100.0
     min_file_size_kb: int = 0
     image_display_orientation: str = "landscape"
+    feature_duplicates: bool = True
+    feature_blur: bool = True
+    feature_gps: bool = True
 
     @classmethod
     def load(cls) -> "Settings":

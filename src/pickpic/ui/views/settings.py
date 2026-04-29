@@ -41,6 +41,29 @@ class SettingsView(ft.Column):
         )
         self._orientation_dropdown.on_change = self._on_orientation_change
 
+        self._feat_warning = ft.Text(
+            "",
+            size=11,
+            color=ft.Colors.ERROR,
+            visible=False,
+        )
+
+        self._feat_duplicates = ft.Checkbox(
+            label="Duplicate Detection",
+            value=self._settings.feature_duplicates,
+            on_change=self._on_feat_change,
+        )
+        self._feat_blur = ft.Checkbox(
+            label="Blur Detection",
+            value=self._settings.feature_blur,
+            on_change=self._on_feat_change,
+        )
+        self._feat_gps = ft.Checkbox(
+            label="GPS Analysis",
+            value=self._settings.feature_gps,
+            on_change=self._on_feat_change,
+        )
+
         super().__init__(
             controls=[self._build()],
             expand=True,
@@ -55,6 +78,44 @@ class SettingsView(ft.Column):
                 spacing=24,
                 controls=[
                     ft.Text("Settings", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Divider(),
+
+                    ft.Text("Enabled Features", size=14, weight=ft.FontWeight.W_600,
+                            color=ft.Colors.OUTLINE),
+                    ft.Text(
+                        "Choose which detection features to run during scan.",
+                        size=12, color=ft.Colors.OUTLINE,
+                    ),
+                    ft.Column(
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    self._feat_duplicates,
+                                    ft.Text("Exact Dupes & Similar", size=11, color=ft.Colors.OUTLINE),
+                                ],
+                                spacing=4,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    self._feat_blur,
+                                    ft.Text("Blurry images", size=11, color=ft.Colors.OUTLINE),
+                                ],
+                                spacing=4,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    self._feat_gps,
+                                    ft.Text("Dup Geotag, No Geotag, Not North", size=11, color=ft.Colors.OUTLINE),
+                                ],
+                                spacing=4,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                        ],
+                        spacing=2,
+                    ),
+                    self._feat_warning,
                     ft.Divider(),
 
                     ft.Text("Detection Preset", size=14, weight=ft.FontWeight.W_600,
@@ -163,6 +224,10 @@ class SettingsView(ft.Column):
         self._blur_slider.value = float(self._settings.blur_threshold)
         self._size_field.value = str(self._settings.min_file_size_kb)
         self._orientation_dropdown.value = self._settings.image_display_orientation
+        self._feat_duplicates.value = self._settings.feature_duplicates
+        self._feat_blur.value = self._settings.feature_blur
+        self._feat_gps.value = self._settings.feature_gps
+        self._on_feat_change()
         self._update_sim_label()
         self._update_blur_label()
         self._rebuild_preset_chips()
@@ -248,7 +313,33 @@ class SettingsView(ft.Column):
     def _on_orientation_change(self, e):
         self._settings.image_display_orientation = e.control.value or "landscape"
 
+    def _on_feat_change(self, e=None):
+        self._settings.feature_duplicates = self._feat_duplicates.value
+        self._settings.feature_blur = self._feat_blur.value
+        self._settings.feature_gps = self._feat_gps.value
+        any_on = (
+            self._settings.feature_duplicates
+            or self._settings.feature_blur
+            or self._settings.feature_gps
+        )
+        if not any_on:
+            self._feat_warning.value = "At least one feature must be enabled."
+            self._feat_warning.visible = True
+        else:
+            self._feat_warning.visible = False
+        try:
+            self._feat_warning.update()
+        except Exception:
+            pass
+
     def _save(self, e=None):
+        self._on_feat_change()
+        if not (
+            self._settings.feature_duplicates
+            or self._settings.feature_blur
+            or self._settings.feature_gps
+        ):
+            return
         try:
             kb = int(self._size_field.value or "0")
             self._settings.min_file_size_kb = max(0, kb)
@@ -260,6 +351,9 @@ class SettingsView(ft.Column):
 
     def _reset(self, e=None):
         self._settings.apply_preset("normal")
+        self._settings.feature_duplicates = True
+        self._settings.feature_blur = True
+        self._settings.feature_gps = True
         self._settings.save()
         self._populate()
         try:
@@ -269,5 +363,9 @@ class SettingsView(ft.Column):
             self._blur_label.update()
             self._size_field.update()
             self._orientation_dropdown.update()
+            self._feat_duplicates.update()
+            self._feat_blur.update()
+            self._feat_gps.update()
+            self._feat_warning.update()
         except Exception:
             pass

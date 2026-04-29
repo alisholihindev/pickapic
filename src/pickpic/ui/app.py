@@ -10,7 +10,7 @@ from pathlib import Path
 import flet as ft
 from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
-from pickpic.config import APP_NAME, APP_REPO_URL, APP_SUPPORT_URL, Settings
+from pickpic.config import APP_ICON_PATH, APP_NAME, APP_REPO_URL, APP_SUPPORT_URL, Settings
 from pickpic.core import index as db
 from pickpic.core import actions
 from pickpic.core.scan_control import ScanAborted, ScanController
@@ -32,13 +32,15 @@ class PickPicApp:
         self.page.theme = ft.Theme(color_scheme_seed=ft.Colors.INDIGO)
         self.page.padding = 0
         self.page.spacing = 0
+        if APP_ICON_PATH.exists():
+            self.page.window.icon = str(APP_ICON_PATH)
 
         db.init_db()
         self.con = db.get_conn()
 
         self._settings = Settings.load()
         self.folders: list[str] = []
-        self.active_tab = "exact"
+        self.active_tab = self._first_available_tab()
         self._settings_active = False
         self._about_active = False
         self.selected_ids: set[int] = set()
@@ -83,6 +85,15 @@ class PickPicApp:
     # Layout helpers
     # ──────────────────────────────────────────────
 
+    def _first_available_tab(self) -> str:
+        if self._settings.feature_duplicates:
+            return "exact"
+        if self._settings.feature_blur:
+            return "blurry"
+        if self._settings.feature_gps:
+            return "dup_geotag"
+        return "exact"
+
     def _make_sidebar(self) -> ft.Control:
         return make_sidebar(
             folders=self.folders,
@@ -98,6 +109,7 @@ class PickPicApp:
             settings_active=self._settings_active,
             on_about=self._open_about,
             about_active=self._about_active,
+            settings=self._settings,
         )
 
     def _get_counts(self) -> dict:
@@ -146,6 +158,7 @@ class PickPicApp:
             on_select=self._toggle_select,
             on_preview=self._show_preview,
             display_orientation=self._settings.image_display_orientation,
+            feature_gps=self._settings.feature_gps,
         )
         view.load_page(reset=True)
         self._set_main(view)
@@ -187,6 +200,8 @@ class PickPicApp:
         scanner_view = ScannerView(
             on_pause_resume=self._toggle_scan_pause,
             on_abort=self._abort_scan,
+            feature_duplicates=self._settings.feature_duplicates,
+            feature_gps=self._settings.feature_gps,
         )
         self._scanner_view = scanner_view
         self._refresh_sidebar()
@@ -220,6 +235,7 @@ class PickPicApp:
             self._set_main(self._empty_view())
             self._snack("Scan aborted.")
         elif self._scan_completed:
+            self.active_tab = self._first_available_tab()
             self._show_results()
             if self._scan_summary:
                 self._snack(self._scan_summary)
@@ -256,6 +272,8 @@ class PickPicApp:
                 blur_threshold=self._settings.blur_threshold,
                 min_file_size_bytes=self._settings.min_file_size_kb * 1024,
                 controller=controller,
+                feature_blur=self._settings.feature_blur,
+                feature_gps=self._settings.feature_gps,
             )
 
             if controller:
@@ -267,49 +285,63 @@ class PickPicApp:
                 db.upsert_image(scan_con, **r)
             scan_con.commit()
 
-            scanner_view.set_stage(2)
-            scanner_view.set_phase("Finding duplicates")
-            hashes = db.get_all_hashes(scan_con)
-
-            exact_groups, similar_groups = find_hash_groups(
-                hashes,
-                hash_distance_similar=self._settings.hash_distance_similar,
-                progress_cb=lambda done, total, label: scanner_view.update_progress(
-                    done, total, label
-                ),
-                controller=controller,
-            )
+            exact_groups = []
+            similar_groups = []
+            dup_geotag_groups = []
 
             if controller:
                 controller.checkpoint()
             scan_con.execute("BEGIN")
             db.clear_groups(scan_con)
-            for g in exact_groups:
-                if controller:
-                    controller.checkpoint()
-                db.insert_group(scan_con, "exact", [{"image_id": i, "score": 1.0} for i in g])
-            for g in similar_groups:
-                if controller:
-                    controller.checkpoint()
-                db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
             scan_con.commit()
 
-            scanner_view.set_stage(3)
-            scanner_view.set_phase("Grouping duplicated geotags")
-            if controller:
-                controller.checkpoint()
-            dup_geotag_groups = db.find_duplicate_geotag_groups(scan_con)
-            scan_con.execute("BEGIN")
-            for g in dup_geotag_groups:
+            if self._settings.feature_duplicates:
+                scanner_view.set_stage(2)
+                scanner_view.set_phase("Finding duplicates")
+                hashes = db.get_all_hashes(scan_con)
+
+                exact_groups, similar_groups = find_hash_groups(
+                    hashes,
+                    hash_distance_similar=self._settings.hash_distance_similar,
+                    progress_cb=lambda done, total, label: scanner_view.update_progress(
+                        done, total, label
+                    ),
+                    controller=controller,
+                )
+
                 if controller:
                     controller.checkpoint()
-                db.insert_group(scan_con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
-            scan_con.commit()
-            self._scan_summary = (
-                f"Scan complete. New files: {len(results)}, "
-                f"exact groups: {len(exact_groups)}, similar groups: {len(similar_groups)}, "
-                f"duplicate geotag groups: {len(dup_geotag_groups)}."
-            )
+                scan_con.execute("BEGIN")
+                for g in exact_groups:
+                    if controller:
+                        controller.checkpoint()
+                    db.insert_group(scan_con, "exact", [{"image_id": i, "score": 1.0} for i in g])
+                for g in similar_groups:
+                    if controller:
+                        controller.checkpoint()
+                    db.insert_group(scan_con, "similar", [{"image_id": i, "score": 0.9} for i in g])
+                scan_con.commit()
+
+            if self._settings.feature_gps:
+                scanner_view.set_stage(3)
+                scanner_view.set_phase("Grouping duplicated geotags")
+                if controller:
+                    controller.checkpoint()
+                dup_geotag_groups = db.find_duplicate_geotag_groups(scan_con)
+                scan_con.execute("BEGIN")
+                for g in dup_geotag_groups:
+                    if controller:
+                        controller.checkpoint()
+                    db.insert_group(scan_con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
+                scan_con.commit()
+
+            summary_parts = [f"Scan complete. New files: {len(results)}"]
+            if self._settings.feature_duplicates:
+                summary_parts.append(f"exact groups: {len(exact_groups)}")
+                summary_parts.append(f"similar groups: {len(similar_groups)}")
+            if self._settings.feature_gps:
+                summary_parts.append(f"duplicate geotag groups: {len(dup_geotag_groups)}")
+            self._scan_summary = ", ".join(summary_parts) + "."
             self._scan_completed = True
         except ScanAborted:
             self._scan_aborted = True
@@ -386,6 +418,17 @@ class PickPicApp:
     def _apply_settings(self):
         self._settings_active = False
         self._about_active = False
+        # Reset active tab if current one is no longer available
+        tab_feature_map = {
+            "exact": self._settings.feature_duplicates,
+            "similar": self._settings.feature_duplicates,
+            "dup_geotag": self._settings.feature_gps,
+            "blurry": self._settings.feature_blur,
+            "no_geotag": self._settings.feature_gps,
+            "not_north": self._settings.feature_gps,
+        }
+        if not tab_feature_map.get(self.active_tab, True):
+            self.active_tab = self._first_available_tab()
         self._refresh_sidebar()
         self._show_results()
         self._snack("Settings saved. Re-grouping...")
@@ -394,31 +437,37 @@ class PickPicApp:
     def _regroup(self):
         con = db.get_conn()
         try:
-            threshold = self._settings.blur_threshold
-            rows = con.execute(
-                "SELECT id, blur_score FROM images WHERE blur_score IS NOT NULL"
-            ).fetchall()
-            con.execute("BEGIN")
-            for row in rows:
-                con.execute(
-                    "UPDATE images SET is_blurry=? WHERE id=?",
-                    (1 if row["blur_score"] < threshold else 0, row["id"]),
-                )
-            con.commit()
+            if self._settings.feature_blur:
+                threshold = self._settings.blur_threshold
+                rows = con.execute(
+                    "SELECT id, blur_score FROM images WHERE blur_score IS NOT NULL"
+                ).fetchall()
+                con.execute("BEGIN")
+                for row in rows:
+                    con.execute(
+                        "UPDATE images SET is_blurry=? WHERE id=?",
+                        (1 if row["blur_score"] < threshold else 0, row["id"]),
+                    )
+                con.commit()
 
-            hashes = db.get_all_hashes(con)
-            exact_groups, similar_groups = find_hash_groups(
-                hashes,
-                hash_distance_similar=self._settings.hash_distance_similar,
-            )
             con.execute("BEGIN")
             db.clear_groups(con)
-            for g in exact_groups:
-                db.insert_group(con, "exact", [{"image_id": i, "score": 1.0} for i in g])
-            for g in similar_groups:
-                db.insert_group(con, "similar", [{"image_id": i, "score": 0.9} for i in g])
-            for g in db.find_duplicate_geotag_groups(con):
-                db.insert_group(con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
+
+            if self._settings.feature_duplicates:
+                hashes = db.get_all_hashes(con)
+                exact_groups, similar_groups = find_hash_groups(
+                    hashes,
+                    hash_distance_similar=self._settings.hash_distance_similar,
+                )
+                for g in exact_groups:
+                    db.insert_group(con, "exact", [{"image_id": i, "score": 1.0} for i in g])
+                for g in similar_groups:
+                    db.insert_group(con, "similar", [{"image_id": i, "score": 0.9} for i in g])
+
+            if self._settings.feature_gps:
+                for g in db.find_duplicate_geotag_groups(con):
+                    db.insert_group(con, "dup_geotag", [{"image_id": i, "score": 1.0} for i in g])
+
             con.commit()
 
             self._refresh_sidebar()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import flet as ft
 
+from pickpic.config import APP_LOGO_PATH
+
 
 class AboutView(ft.Column):
     def __init__(
@@ -21,7 +23,31 @@ class AboutView(ft.Column):
                     content=ft.Column(
                         spacing=20,
                         controls=[
-                            ft.Text(app_name, size=28, weight=ft.FontWeight.BOLD),
+                            ft.Row(
+                                spacing=16,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    ft.Image(
+                                        src=str(APP_LOGO_PATH),
+                                        width=72,
+                                        height=72,
+                                        fit=ft.BoxFit.CONTAIN,
+                                        border_radius=16,
+                                    ) if APP_LOGO_PATH.exists() else ft.Container(),
+                                    ft.Column(
+                                        spacing=4,
+                                        expand=True,
+                                        controls=[
+                                            ft.Text(app_name, size=28, weight=ft.FontWeight.BOLD),
+                                            ft.Text(
+                                                "Fast local image cleanup with GPS-aware grouping.",
+                                                size=13,
+                                                color=ft.Colors.OUTLINE,
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
                             ft.Text(
                                 "A desktop app for cleaning image collections faster. "
                                 "Find exact duplicates, similar images, blurry shots, "

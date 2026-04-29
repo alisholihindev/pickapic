@@ -38,6 +38,7 @@ def make_image_card(
     selected: bool = False,
     on_preview: callable | None = None,
     display_orientation: str = "landscape",
+    feature_gps: bool = True,
 ) -> ft.Control:
     path = member["path"]
     name = Path(path).name
@@ -98,7 +99,7 @@ def make_image_card(
                 padding=ft.padding.symmetric(horizontal=4, vertical=2),
             )
         )
-    if has_gps == 0:
+    if feature_gps and has_gps == 0:
         badges.append(
             ft.Container(
                 content=ft.Text("No GPS", size=9, color=ft.Colors.WHITE),
@@ -107,7 +108,7 @@ def make_image_card(
                 padding=ft.padding.symmetric(horizontal=4, vertical=2),
             )
         )
-    if is_facing_north == 0:
+    if feature_gps and is_facing_north == 0:
         badges.append(
             ft.Container(
                 content=ft.Text("Not North", size=9, color=ft.Colors.WHITE),
@@ -158,16 +159,17 @@ def make_image_card(
         meta_rows.append(
             ft.Text(f"Score: {blur_score:.1f}", size=10, color=ft.Colors.ERROR)
         )
-    if has_gps == 0:
-        meta_rows.append(ft.Text("EXIF GPS missing", size=10, color=ft.Colors.AMBER))
-    elif gps_lat is not None and gps_lon is not None:
-        meta_rows.append(
-            ft.Text(f"GPS: {gps_lat:.6f}, {gps_lon:.6f}", size=10, color=ft.Colors.OUTLINE)
-        )
-    if gps_heading is not None:
-        ref = f" {gps_heading_ref}" if gps_heading_ref else ""
-        color = ft.Colors.GREEN if is_facing_north == 1 else ft.Colors.ORANGE
-        meta_rows.append(ft.Text(f"Heading: {gps_heading:.1f}°{ref}", size=10, color=color))
+    if feature_gps:
+        if has_gps == 0:
+            meta_rows.append(ft.Text("EXIF GPS missing", size=10, color=ft.Colors.AMBER))
+        elif gps_lat is not None and gps_lon is not None:
+            meta_rows.append(
+                ft.Text(f"GPS: {gps_lat:.6f}, {gps_lon:.6f}", size=10, color=ft.Colors.OUTLINE)
+            )
+        if gps_heading is not None:
+            ref = f" {gps_heading_ref}" if gps_heading_ref else ""
+            color = ft.Colors.GREEN if is_facing_north == 1 else ft.Colors.ORANGE
+            meta_rows.append(ft.Text(f"Heading: {gps_heading:.1f}°{ref}", size=10, color=color))
 
     return ft.Container(
         width=card_width,

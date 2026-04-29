@@ -13,6 +13,7 @@ def make_group_row(
     on_preview: callable | None = None,
     display_orientation: str = "landscape",
     on_bulk_change: callable | None = None,
+    feature_gps: bool = True,
 ) -> ft.Control:
     members = group["members"]
     count_text = f"{len(members)} images"
@@ -42,6 +43,7 @@ def make_group_row(
             selected=m["id"] in selected_ids,
             on_preview=on_preview,
             display_orientation=display_orientation,
+            feature_gps=feature_gps,
         )
         for m in members
     ]

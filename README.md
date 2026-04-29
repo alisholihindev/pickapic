@@ -1,6 +1,37 @@
-# Pickapic
+<p align="center">
+  <img src="src/pickpic/assets/pickapic-logo.png" alt="Pickapic Logo" width="120" />
+</p>
 
-Pickapic adalah aplikasi desktop berbasis Python + Flet untuk membantu mencari foto duplikat, gambar mirip, dan gambar blur dari folder lokal. Aplikasi ini cocok untuk membersihkan koleksi gambar seperti hasil kamera, screenshot, atau folder arsip yang sudah menumpuk.
+<h1 align="center">Pickapic</h1>
+
+<p align="center">
+  Aplikasi desktop untuk membersihkan koleksi gambar lokal — temukan duplikat, gambar mirip, foto blur, dan masalah GPS dalam hitungan detik.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/v/release/alisholihindev/pickapic?style=flat-square&color=blue" alt="Latest Release" />
+  <img src="https://img.shields.io/github/license/alisholihindev/pickapic?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/UI-Flet-purple?style=flat-square" alt="Flet" />
+  <img src="https://img.shields.io/github/stars/alisholihindev/pickapic?style=flat-square" alt="Stars" />
+  <img src="https://img.shields.io/github/downloads/alisholihindev/pickapic/total?style=flat-square&color=green" alt="Downloads" />
+</p>
+
+---
+
+## Statistik Project
+
+| Metrik | Detail |
+|---|---|
+| Bahasa | Python 3.11+ |
+| UI Framework | [Flet](https://flet.dev/) (Flutter-based) |
+| Database | SQLite (WAL mode) |
+| Format Didukung | 11 format (JPG, PNG, GIF, BMP, WebP, TIFF, RAW, CR2, NEF) |
+| Fitur Deteksi | 6 kategori (Exact Dupes, Similar, Dup Geotag, Blurry, No Geotag, Not North) |
+| Scan Engine | Multi-threaded (hingga 8 workers) |
+| Lisensi | MIT |
+
+---
 
 ## Fitur Utama
 
@@ -8,9 +39,13 @@ Pickapic adalah aplikasi desktop berbasis Python + Flet untuk membantu mencari f
 - Deteksi **Exact Dupes** untuk file yang benar-benar duplikat.
 - Deteksi **Similar** untuk gambar yang sangat mirip.
 - Deteksi **Blurry** untuk gambar yang terindikasi blur.
-- Preview gambar langsung dari aplikasi.
+- Deteksi **Dup Geotag** untuk gambar yang diambil di lokasi yang sama.
+- Deteksi **No Geotag** untuk gambar tanpa data GPS.
+- Deteksi **Not North** untuk gambar yang tidak menghadap utara.
+- **Pilih fitur yang diinginkan** — aktifkan/nonaktifkan deteksi Duplikat, Blur, atau GPS sesuai kebutuhan.
+- Preview gambar langsung dari aplikasi dengan metadata EXIF lengkap.
 - Aksi cepat untuk:
-  - hapus file
+  - hapus file (ke Recycle Bin)
   - pindahkan file
   - rename file
   - undo aksi terakhir
@@ -19,21 +54,41 @@ Pickapic adalah aplikasi desktop berbasis Python + Flet untuk membantu mencari f
 
 ## Teknologi yang Dipakai
 
-- [Python 3.11+](https://www.python.org/)
-- [Flet](https://flet.dev/) untuk UI desktop
-- Pillow untuk baca/proses gambar
-- imagehash untuk hashing gambar
-- OpenCV untuk blur detection
-- hnswlib + NumPy untuk pencarian gambar mirip
-- SQLite untuk cache dan penyimpanan hasil scan
+| Library | Fungsi |
+|---|---|
+| [Python 3.11+](https://www.python.org/) | Runtime |
+| [Flet](https://flet.dev/) | UI desktop (Flutter-based) |
+| [Pillow](https://pillow.readthedocs.io/) | Baca/proses gambar, EXIF, thumbnail |
+| [imagehash](https://github.com/JohannesBuchner/imagehash) | Perceptual hashing (pHash, dHash) |
+| [OpenCV](https://opencv.org/) | Blur detection (Laplacian variance) |
+| [hnswlib](https://github.com/nmslib/hnswlib) + NumPy | Pencarian gambar mirip |
+| [send2trash](https://github.com/arsenetar/send2trash) | Hapus file ke Recycle Bin |
+| SQLite | Cache dan penyimpanan hasil scan |
 
 ## Struktur Singkat Project
 
-- `main.py` : entry point sederhana untuk menjalankan app dari repo
-- `src/pickpic/main.py` : entry point package `pickpic`
-- `src/pickpic/ui/` : tampilan aplikasi
-- `src/pickpic/core/` : logika scan, hashing, grouping, blur detection, dan database
-- `README.md` : dokumentasi project
+```
+pickapic/
+├── main.py                    # Entry point untuk menjalankan app dari repo
+├── pyproject.toml             # Metadata package dan dependencies
+├── src/pickpic/
+│   ├── main.py                # Entry point package (CLI command)
+│   ├── config.py              # Konstanta, path, Settings dataclass
+│   ├── core/                  # Logika backend
+│   │   ├── scanner.py         # Multi-threaded image discovery & processing
+│   │   ├── hasher.py          # Perceptual hashing + EXIF GPS extraction
+│   │   ├── blur.py            # Blur detection (Laplacian variance)
+│   │   ├── similarity.py      # Grouping duplikat & gambar mirip
+│   │   ├── index.py           # SQLite database layer
+│   │   ├── actions.py         # File operations (delete/move/rename/undo)
+│   │   └── scan_control.py    # Pause/resume/abort controller
+│   ├── ui/                    # Tampilan aplikasi (Flet)
+│   │   ├── app.py             # Main application controller
+│   │   ├── components/        # Komponen UI (sidebar, image card, action bar)
+│   │   └── views/             # Halaman (scanner, results, settings, about)
+│   └── assets/                # Logo dan icon
+└── README.md
+```
 
 ## Instalasi
 
@@ -98,15 +153,22 @@ pickpic
 
 1. Jalankan aplikasi.
 2. Klik **Add Folder** untuk menambahkan folder gambar.
-3. Klik **Scan** untuk mulai proses pemindaian.
-4. Tunggu sampai proses scan, grouping, dan analisis selesai.
-5. Buka kategori di sidebar:
+3. (Opsional) Buka **Settings** untuk memilih fitur deteksi yang diinginkan:
+   - **Duplicate Detection** — Exact Dupes & Similar
+   - **Blur Detection** — Gambar blur
+   - **GPS Analysis** — Dup Geotag, No Geotag, Not North
+4. Klik **Scan** untuk mulai proses pemindaian.
+5. Tunggu sampai proses scan, grouping, dan analisis selesai.
+6. Buka kategori di sidebar:
    - `Exact Dupes` untuk file duplikat
    - `Similar` untuk gambar yang mirip
+   - `Dup Geotag` untuk gambar di lokasi yang sama
    - `Blurry` untuk gambar blur
-6. Bandingkan gambar dalam tiap group.
-7. Pilih gambar yang ingin diproses.
-8. Gunakan action bar di bawah untuk:
+   - `No Geotag` untuk gambar tanpa GPS
+   - `Not North` untuk gambar tidak menghadap utara
+7. Bandingkan gambar dalam tiap group.
+8. Pilih gambar yang ingin diproses.
+9. Gunakan action bar di bawah untuk:
    - **Delete**
    - **Move to...**
    - **Rename**
@@ -116,6 +178,11 @@ pickpic
 
 Menu **Settings** menyediakan beberapa opsi:
 
+- **Enabled Features**
+  Pilih fitur deteksi yang ingin dijalankan saat scan:
+  - `Duplicate Detection` — Exact Dupes & Similar
+  - `Blur Detection` — Gambar blur
+  - `GPS Analysis` — Dup Geotag, No Geotag, Not North
 - **Detection Preset**
   - `Strict`
   - `Normal`
@@ -126,6 +193,8 @@ Menu **Settings** menyediakan beberapa opsi:
   Mengatur ambang deteksi blur.
 - **File Size Filter**
   Melewati file yang lebih kecil dari ukuran minimum tertentu.
+- **Image Display Mode**
+  Pilih tampilan card gambar: Portrait atau Landscape.
 - **Reset Cache**
   Menghapus data hasil scan dan grouping dari cache lokal tanpa menyentuh file gambar asli.
 
@@ -133,17 +202,15 @@ Menu **Settings** menyediakan beberapa opsi:
 
 Saat scan, aplikasi mengenali ekstensi berikut:
 
-- `.jpg`
-- `.jpeg`
-- `.png`
-- `.gif`
-- `.bmp`
-- `.webp`
-- `.tiff`
-- `.tif`
-- `.raw`
-- `.cr2`
-- `.nef`
+| Format | Ekstensi |
+|---|---|
+| JPEG | `.jpg`, `.jpeg` |
+| PNG | `.png` |
+| GIF | `.gif` |
+| BMP | `.bmp` |
+| WebP | `.webp` |
+| TIFF | `.tiff`, `.tif` |
+| RAW | `.raw`, `.cr2`, `.nef` |
 
 Catatan: dukungan preview bisa bergantung pada kemampuan library gambar yang dipakai.
 
@@ -151,24 +218,36 @@ Catatan: dukungan preview bisa bergantung pada kemampuan library gambar yang dip
 
 Pickapic menyimpan data lokal di folder home user:
 
-- database cache: `~/.pickpic/index.db`
-- settings: `~/.pickpic/settings.json`
+| File | Lokasi | Fungsi |
+|---|---|---|
+| Database cache | `~/.pickpic/index.db` | Hasil scan, grouping, undo log |
+| Settings | `~/.pickpic/settings.json` | Konfigurasi aplikasi |
+| Thumbnails | `~/.pickpic/thumbs/` | Cache thumbnail gambar |
 
 Data ini dipakai untuk menyimpan hasil scan, grouping, dan konfigurasi aplikasi.
 
 ## Workflow Singkat
 
-- Aplikasi menemukan file gambar dari folder yang dipilih.
-- File yang sudah pernah discan dan belum berubah bisa dilewati dari cache.
-- Gambar diproses untuk mendapatkan hash, ukuran, dan skor blur.
-- Hasil dipakai untuk membentuk group duplikat dan group gambar mirip.
-- Hasil ditampilkan di UI agar pengguna bisa memutuskan file mana yang ingin dipertahankan atau dibersihkan.
+```
+Pilih Folder → Pilih Fitur → Scan
+    │
+    ├── Discover file gambar
+    ├── Skip file yang sudah di-cache
+    ├── Proses hash, blur score, GPS (multi-threaded)
+    ├── Simpan ke SQLite
+    │
+    ├── [Jika Duplicate aktif] Grouping exact & similar
+    ├── [Jika GPS aktif] Grouping geotag duplikat
+    │
+    └── Tampilkan hasil → User pilih aksi (Delete/Move/Rename/Undo)
+```
 
 ## Catatan
 
 - Sebelum menghapus atau memindahkan file dalam jumlah besar, sebaiknya cek group hasil scan terlebih dahulu.
 - Untuk koleksi besar, scan pertama bisa memakan waktu lebih lama karena cache belum terbentuk.
 - Jika hasil grouping dirasa kurang pas, ubah sensitivitas di menu **Settings** lalu simpan agar aplikasi melakukan re-grouping.
+- Fitur yang dinonaktifkan akan melewati komputasi terkait, sehingga scan lebih cepat.
 
 ## Development
 
@@ -181,4 +260,4 @@ python main.py
 
 ## Lisensi
 
-MIT License. Lihat file `LICENSE`.
+MIT License. Lihat file [`LICENSE`](LICENSE).

@@ -37,9 +37,14 @@ def _process_image(
     blur_threshold: float,
     feature_blur: bool = True,
     feature_gps: bool = True,
+    north_tolerance_degrees: float = 15.0,
 ) -> dict | None:
     stat = os.stat(path)
-    hashes = compute_hashes(path, extract_gps=feature_gps)
+    hashes = compute_hashes(
+        path,
+        extract_gps=feature_gps,
+        north_tolerance_degrees=north_tolerance_degrees,
+    )
     if hashes is None:
         return None
 
@@ -77,6 +82,7 @@ def scan_new_only(
     controller: ScanController | None = None,
     feature_blur: bool = True,
     feature_gps: bool = True,
+    north_tolerance_degrees: float = 15.0,
 ) -> list[dict]:
     """Scan folders, skipping already-cached files."""
     paths = _discover_images(folders, progress_cb, controller=controller)
@@ -121,6 +127,7 @@ def scan_new_only(
                 futures[pool.submit(
                     _process_image, path, blur_threshold,
                     feature_blur=feature_blur, feature_gps=feature_gps,
+                    north_tolerance_degrees=north_tolerance_degrees,
                 )] = path
 
         submit_more()

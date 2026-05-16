@@ -274,6 +274,7 @@ class PickPicApp:
                 controller=controller,
                 feature_blur=self._settings.feature_blur,
                 feature_gps=self._settings.feature_gps,
+                north_tolerance_degrees=self._settings.gps_north_tolerance_degrees,
             )
 
             if controller:
@@ -447,6 +448,22 @@ class PickPicApp:
                     con.execute(
                         "UPDATE images SET is_blurry=? WHERE id=?",
                         (1 if row["blur_score"] < threshold else 0, row["id"]),
+                    )
+                con.commit()
+
+            if self._settings.feature_gps:
+                tolerance = self._settings.gps_north_tolerance_degrees
+                rows = con.execute(
+                    "SELECT id, gps_heading FROM images "
+                    "WHERE has_gps=1 AND gps_heading IS NOT NULL"
+                ).fetchall()
+                con.execute("BEGIN")
+                for row in rows:
+                    heading = float(row["gps_heading"]) % 360.0
+                    delta = min(heading, 360.0 - heading)
+                    con.execute(
+                        "UPDATE images SET is_facing_north=? WHERE id=?",
+                        (1 if delta <= tolerance else 0, row["id"]),
                     )
                 con.commit()
 

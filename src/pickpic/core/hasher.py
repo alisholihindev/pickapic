@@ -10,7 +10,7 @@ GPS_LON_REF_TAG = 3
 GPS_LON_TAG = 4
 GPS_IMG_DIRECTION_REF_TAG = 16
 GPS_IMG_DIRECTION_TAG = 17
-NORTH_TOLERANCE_DEGREES = 15.0
+DEFAULT_NORTH_TOLERANCE_DEGREES = 15.0
 
 
 def _is_present(value) -> bool:
@@ -97,7 +97,10 @@ def _extract_coordinates(img: Image.Image) -> tuple[float | None, float | None]:
     return round(lat, 6), round(lon, 6)
 
 
-def _extract_heading(img: Image.Image) -> tuple[float | None, str | None, bool | None]:
+def _extract_heading(
+    img: Image.Image,
+    north_tolerance_degrees: float = DEFAULT_NORTH_TOLERANCE_DEGREES,
+) -> tuple[float | None, str | None, bool | None]:
     gps_info = _get_gps_info(img)
     if not gps_info:
         return None, None, None
@@ -110,10 +113,14 @@ def _extract_heading(img: Image.Image) -> tuple[float | None, str | None, bool |
     heading_ref = str(heading_ref).strip().upper()[:1] or None
     heading = heading % 360.0
     delta = min(heading, 360.0 - heading)
-    return heading, heading_ref, delta <= NORTH_TOLERANCE_DEGREES
+    return heading, heading_ref, delta <= north_tolerance_degrees
 
 
-def compute_hashes(path: str, extract_gps: bool = True) -> dict | None:
+def compute_hashes(
+    path: str,
+    extract_gps: bool = True,
+    north_tolerance_degrees: float = DEFAULT_NORTH_TOLERANCE_DEGREES,
+) -> dict | None:
     """Return image hashes and extracted metadata or None on error."""
     try:
         with Image.open(path) as img:
@@ -124,7 +131,9 @@ def compute_hashes(path: str, extract_gps: bool = True) -> dict | None:
             if extract_gps:
                 has_gps = _has_exif_gps(img)
                 gps_lat, gps_lon = _extract_coordinates(img)
-                gps_heading, gps_heading_ref, is_facing_north = _extract_heading(img)
+                gps_heading, gps_heading_ref, is_facing_north = _extract_heading(
+                    img, north_tolerance_degrees=north_tolerance_degrees
+                )
             else:
                 has_gps = False
                 gps_lat = gps_lon = None

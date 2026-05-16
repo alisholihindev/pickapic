@@ -31,6 +31,11 @@ class SettingsView(ft.Column):
             keyboard_type=ft.KeyboardType.NUMBER,
             width=200,
         )
+        self._north_slider = ft.Slider(
+            min=1, max=90, divisions=89,
+            on_change=self._on_north_change,
+        )
+        self._north_label = ft.Text(size=12, color=ft.Colors.OUTLINE)
         self._orientation_dropdown = ft.Dropdown(
             width=220,
             value="landscape",
@@ -167,6 +172,23 @@ class SettingsView(ft.Column):
                     self._size_field,
                     ft.Divider(),
 
+                    ft.Text("North Direction Tolerance", size=14, weight=ft.FontWeight.W_600),
+                    ft.Text(
+                        "Range of degrees from due north (0°) considered facing north. "
+                        "Lower = stricter, only images aimed almost exactly at north pass.",
+                        size=12, color=ft.Colors.OUTLINE,
+                    ),
+                    ft.Row(
+                        controls=[
+                            ft.Text("Strict", size=11, color=ft.Colors.OUTLINE),
+                            ft.Container(content=self._north_slider, expand=True),
+                            ft.Text("Loose", size=11, color=ft.Colors.OUTLINE),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    self._north_label,
+                    ft.Divider(),
+
                     ft.Text("Image Display Mode", size=14, weight=ft.FontWeight.W_600),
                     ft.Text(
                         "Choose how image cards are presented in results.",
@@ -223,6 +245,7 @@ class SettingsView(ft.Column):
         self._sim_slider.value = float(self._settings.hash_distance_similar)
         self._blur_slider.value = float(self._settings.blur_threshold)
         self._size_field.value = str(self._settings.min_file_size_kb)
+        self._north_slider.value = float(self._settings.gps_north_tolerance_degrees)
         self._orientation_dropdown.value = self._settings.image_display_orientation
         self._feat_duplicates.value = self._settings.feature_duplicates
         self._feat_blur.value = self._settings.feature_blur
@@ -230,6 +253,7 @@ class SettingsView(ft.Column):
         self._on_feat_change()
         self._update_sim_label()
         self._update_blur_label()
+        self._update_north_label()
         self._rebuild_preset_chips()
 
     def _rebuild_preset_chips(self):
@@ -310,6 +334,24 @@ class SettingsView(ft.Column):
             desc = "Loose — catches mildly blurry images"
         self._blur_label.value = f"Threshold < {t:.0f}  ·  {desc}"
 
+    def _on_north_change(self, e):
+        self._settings.gps_north_tolerance_degrees = float(e.control.value)
+        self._update_north_label()
+        try:
+            self._north_label.update()
+        except Exception:
+            pass
+
+    def _update_north_label(self):
+        t = self._settings.gps_north_tolerance_degrees
+        if t <= 5:
+            desc = "Strict — almost exactly north"
+        elif t <= 20:
+            desc = "Normal — small deviation allowed"
+        else:
+            desc = "Loose — wider arc treated as north"
+        self._north_label.value = f"Tolerance ± {t:.0f}°  ·  {desc}"
+
     def _on_orientation_change(self, e):
         self._settings.image_display_orientation = e.control.value or "landscape"
 
@@ -345,6 +387,7 @@ class SettingsView(ft.Column):
             self._settings.min_file_size_kb = max(0, kb)
         except ValueError:
             self._settings.min_file_size_kb = 0
+        self._settings.gps_north_tolerance_degrees = float(self._north_slider.value or 15.0)
         self._settings.image_display_orientation = self._orientation_dropdown.value or "landscape"
         self._settings.save()
         self._on_save()
@@ -354,6 +397,7 @@ class SettingsView(ft.Column):
         self._settings.feature_duplicates = True
         self._settings.feature_blur = True
         self._settings.feature_gps = True
+        self._settings.gps_north_tolerance_degrees = 15.0
         self._settings.save()
         self._populate()
         try:
@@ -362,6 +406,8 @@ class SettingsView(ft.Column):
             self._sim_label.update()
             self._blur_label.update()
             self._size_field.update()
+            self._north_slider.update()
+            self._north_label.update()
             self._orientation_dropdown.update()
             self._feat_duplicates.update()
             self._feat_blur.update()
